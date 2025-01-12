@@ -1,0 +1,9 @@
+.env
+
+.idea
+__pycache__/*
+
+*.xlsx
+*.json
+
+.idea/*
