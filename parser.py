@@ -114,6 +114,8 @@ class XParser:
                 break
 
         # TODO внимание, костыль, надо убрать
+        # заполняем кафедры
+        self.db.fill_departments()
         # заполняем дни таблицы rasp18_days
         if self.parse_type == "SESSION":
             self.db.fill_rasp18_for_period("2024-09-02", "2025-02-02")
@@ -216,6 +218,10 @@ class XParser:
             teacher = ws.cell(row, col + 1).value
             room = ws.cell(row, col + 2).value
 
+            # по цвету определяем пренадлежность к кафедре
+            cur_color = ws.cell(row, col).fill.start_color.index
+            department_id = self.get_dep_id(cel_color=cur_color)
+
             # если смешаная клетка
             if cur_order is not None:
                 order = cur_order
@@ -238,7 +244,7 @@ class XParser:
                 # заполнение БД новыми данными
                 semcode = self.get_semcode(title, group)
                 self.fill_group_day_db(
-                    lesson_parts, teacher, order, weekday, semcode, group_id, room)
+                    lesson_parts, teacher, order, weekday, semcode, group_id, room, department_id)
 
         return weekday_params
 
@@ -259,22 +265,7 @@ class XParser:
             exam_type = ws.cell(row, col+1).value
             lesson_name = ws.cell(row+1, col).value
             teacher = ws.cell(row+2, col).value
-            room = ws.cell(row+2, col+1).value
-
-            cur_color = ws.cell(row, col+1).fill.start_color.index
-
-            department_name = "ВЕГА"
-            match cur_color:
-                case "FFCCFF66":
-                    department_name = "только для ВЕГИ"
-                # case "":
-                #     department_name = "только для ВМ"
-                case "FFFFE15A":
-                    department_name = "ВМ"
-                case "FFE5FF99":
-                    department_name = "ВЕГА"
-                case "FFB2ECFF":
-                    department_name = "другая"
+            room = ws.cell(row+2, col+1).value            
 
             # время начала экзамена
             time_start = ws.cell(row, col).value
@@ -324,8 +315,11 @@ class XParser:
 
             # если перепутали название дисциплины, добавим такую
             if disc_id is None:
+                cur_color = ws.cell(row, col+1).fill.start_color.index
+                department_id = self.get_dep_id(cel_color=cur_color)
+
                 disc_id = self.db.set_disc(title="null", shorttitle=lesson_name,
-                                           department_id=-1, varmask="null")
+                                           department_id=department_id, varmask="null")
 
             # если новый день, то добавляем
             rasp18_days_id = self.db.set_rasp18_days(
@@ -341,11 +335,6 @@ class XParser:
                 rasp18_id=rasp18_id, group_id=group_id, subgroup=0)
             # set_rasp18_preps
             if teacher is not None:
-                if "Крыжановский Ю.М." in teacher:
-                    print("Крыжановский Ю.М." + cur_color)
-                if "Хрычев Д.А." in teacher:
-                    print("Хрычев Д.А. " + cur_color)
-
                 # TODO добавить, когда можно будет делить преподов ведущих одну пару
                 # teacher = teacher.replace(", ", ",")
                 # if teacher.find("\n") != -1 or teacher.find(",\n") != -1:
@@ -571,15 +560,16 @@ class XParser:
         weekday: str,
         semcode: int,
         group_id: int,
-        room: str
+        room: str,
+        department_id: int
     ):
         """Заполнение таблиц по данным одного дня недели определенной группы"""
         # таблица дисциплин
-        title, _ = self.get_titles(lesson_parts["disc_name"])
+        title, _ = self.get_titles(lesson_parts["disc_name"])        
         disc_id = self.db.set_disc(
             title=title,
             shorttitle=lesson_parts["disc_name"],
-            department_id=-1,  # нельзя узнать кафедру по excel расписанию
+            department_id=department_id,
             varmask="null",
         )
 
@@ -657,6 +647,26 @@ class XParser:
         disc_id = self.db.get_id(table_name="sc_disc", params=params)
         return disc_id
 
+    def get_dep_id(self, cel_color: int) -> int:
+        """Получить по цвету ячейки id кафедры"""
+        department_name = "ВЕГА"
+        match cel_color:
+            case "FFCCFF66":
+                department_name = "только для ВЕГИ"
+            case "FFFFCCFF":
+                department_name = "только для ВМ"
+            case "FFFFE15A":
+                department_name = "ВМ"
+            case "FFF1FF67":
+                department_name = "ВЕГА"
+            case "FFE5FF99":
+                department_name = "ВЕГА"
+            case "FFB2ECFF":
+                department_name = "другая"
+
+        dep_params = {"title": department_name}    
+        department_id = self.db.get_id("sc_department", {dep_params})
+        return department_id
 
 if __name__ == "__main__":
     parser = XParser()
