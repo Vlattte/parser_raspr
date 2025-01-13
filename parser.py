@@ -58,6 +58,8 @@ class XParser:
 
         self.version = 0
         self.end_table_pattern = r"(\w* )?\d курс"
+        self.start_date = os.getenv("START_DATE")
+        self.end_date = os.getenv("END_DATE")
 
         if self.parse_type == "SESSION":
             self.change_to_session_params()
@@ -80,8 +82,7 @@ class XParser:
 
     def parse(self) -> dict:
         """Парсим данные"""
-        ws = openpyxl.load_workbook(
-            filename=self.file_name, read_only=True).active
+        ws = openpyxl.load_workbook(filename=self.file_name, read_only=True).active
         # ------------------Определяем границы расписания------------------
         min_col = ws.min_column
         max_col = ws.max_column
@@ -92,7 +93,7 @@ class XParser:
         rasp_title = ""
         today = datetime.datetime.now()
         # Год начала и конца семестра
-        rasp_years = [str(today.year), str(today.year+1)]
+        rasp_years = [str(today.year), str(today.year + 1)]
         for row in range(1, max_row):
             rasp_title = ws.cell(row, self.version_col).value
             if rasp_title is None or not isinstance(rasp_title, str):
@@ -102,9 +103,9 @@ class XParser:
             stud_year_idx = rasp_title.find("учебного года")
             if stud_year_idx != -1:
                 rasp_years.clear()
-                str_years = rasp_title[stud_year_idx-8:stud_year_idx-1]
+                str_years = rasp_title[stud_year_idx - 8 : stud_year_idx - 1]
                 start_year = str_years[:4]
-                end_year = "20"+str_years[5:]
+                end_year = "20" + str_years[5:]
                 rasp_years.append(start_year)
                 rasp_years.append(end_year)
 
@@ -113,12 +114,12 @@ class XParser:
                 self.get_version(title=rasp_title)
                 break
 
-        # TODO внимание, костыль, надо убрать
+        # TODO ВНИМАНИЕ, костыль, надо убрать
         # заполняем кафедры
         self.db.fill_departments()
         # заполняем дни таблицы rasp18_days
         if self.parse_type == "SESSION":
-            self.db.fill_rasp18_for_period("2024-09-02", "2025-02-02")
+            self.db.fill_rasp18_for_period(self.start_date, self.end_date)
 
         # ---------------Парсим расписание в цикле по группам--------------
         groups = {}
@@ -167,7 +168,7 @@ class XParser:
             if max_row != ws.max_row:
                 break
 
-        for row in range(max_row-1, 1, -1):
+        for row in range(max_row - 1, 1, -1):
             if not self.is_hsplitter(ws, row):
                 return row
         return max_row
@@ -182,11 +183,11 @@ class XParser:
     @staticmethod
     def get_group_name(group_cell: str) -> str:
         """
-            Делит ячейку группы на части:
-            1 курс\nКМБО-47-25
-            return: название группы(str)
+        Делит ячейку группы на части:
+        1 курс\nКМБО-47-25
+        return: название группы(str)
         """
-        cource, group_name = group_cell.split("\n")
+        _, group_name = group_cell.split("\n")
         return group_name
 
     def parse_default_col(self, col, ws, max_row, title, group, group_id):
@@ -226,8 +227,7 @@ class XParser:
             if cur_order is not None:
                 order = cur_order
             # prev_order, order = self.swap_with_prev_value(prev_order, order)
-            prev_teacher, teacher = self.swap_with_prev_value(
-                prev_teacher, teacher)
+            prev_teacher, teacher = self.swap_with_prev_value(prev_teacher, teacher)
             prev_room, room = self.swap_with_prev_value(prev_room, room)
 
             if lesson_cell:
@@ -236,36 +236,42 @@ class XParser:
                     break
 
                 lesson_parts = self.get_lesson_parts(lesson_cell)
-                lesson_data = self.make_lesson_dict(
-                    lesson_parts, teacher, order, room
-                )
+                lesson_data = self.make_lesson_dict(lesson_parts, teacher, order, room)
                 weekday_params[weekday].append(lesson_data)
 
                 # заполнение БД новыми данными
                 semcode = self.get_semcode(title, group)
                 self.fill_group_day_db(
-                    lesson_parts, teacher, order, weekday, semcode, group_id, room, department_id)
+                    lesson_parts,
+                    teacher,
+                    order,
+                    weekday,
+                    semcode,
+                    group_id,
+                    room,
+                    department_id,
+                )
 
         return weekday_params
 
     def parse_exam_col(self, col, ws, max_row, title, group, group_id, rasp_years):
         """Разбор колонки расписания экзаменов"""
-        weekday_params = {}
         prev_date_cell = None
         row = self.group_row + 2
-        # проходимся по текущему столбцу по всем строкам
 
+        # проходимся по текущему столбцу по всем строкам
         while row < max_row:
             date_cell = ws.cell(row, self.para_col).value
             # если следующий день
             prev_date_cell, date_cell = self.swap_with_prev_value(
-                prev_date_cell, date_cell)
+                prev_date_cell, date_cell
+            )
             exam_date, weekday = date_cell.split("\n")
 
-            exam_type = ws.cell(row, col+1).value
-            lesson_name = ws.cell(row+1, col).value
-            teacher = ws.cell(row+2, col).value
-            room = ws.cell(row+2, col+1).value            
+            exam_type = ws.cell(row, col + 1).value
+            lesson_name = ws.cell(row + 1, col).value
+            teacher = ws.cell(row + 2, col).value
+            room = ws.cell(row + 2, col + 1).value
 
             # время начала экзамена
             time_start = ws.cell(row, col).value
@@ -282,20 +288,15 @@ class XParser:
                 if lesson_name is None and teacher is None:
                     row += 3
                     continue
+
                 # если предмет не пустой, то ставим на 4 пары
-                elif teacher is None:
+                if teacher is None:
                     time_start = datetime.time(hour=9, minute=0)
                     time_end = datetime.time(hour=15, minute=50)
 
             # ставим длительность экзамена 1.5 часа (2 академ часа)
             else:
-                end_minutes = (time_start.minute + 30) % 60
-                end_hour = time_start.hour + 1
-
-                # если перешли в следующий час
-                if end_minutes < 30:
-                    end_hour += 1
-                time_end = datetime.time(end_hour, end_minutes)
+                time_end = self.time_in_90_minutes(time_start)
 
             cur_order = self.get_order_by_time(time_start)
             last_order = self.get_order_by_time(time_end)
@@ -303,36 +304,48 @@ class XParser:
             # Заполение таблиц
             month = int(exam_date[-2:])
             if month > 8:
-                exam_date += "."+rasp_years[0]
+                exam_date += "." + rasp_years[0]
             else:
-                exam_date += "."+rasp_years[1]
+                exam_date += "." + rasp_years[1]
 
             semcode = self.get_semcode(title, group)
             weekday_num = self.week_strs.index(weekday.upper())
-            week = self.get_exam_week(str(exam_date))
+            week = self.db.get_week_by_date(exam_date)
             worktype = self.get_worktype_id(exam_type)
             disc_id = self.get_disc_id(lesson_name)
 
             # если перепутали название дисциплины, добавим такую
             if disc_id is None:
-                cur_color = ws.cell(row, col+1).fill.start_color.index
+                cur_color = ws.cell(row, col + 1).fill.start_color.index
                 department_id = self.get_dep_id(cel_color=cur_color)
 
-                disc_id = self.db.set_disc(title="null", shorttitle=lesson_name,
-                                           department_id=department_id, varmask="null")
+                disc_id = self.db.set_disc(
+                    title="null",
+                    shorttitle=lesson_name,
+                    department_id=department_id,
+                    varmask="null",
+                )
 
             # если новый день, то добавляем
             rasp18_days_id = self.db.set_rasp18_days(
-                semcode=1, day=exam_date, weekday=weekday_num, week=week)
+                semcode=1, day=exam_date, weekday=weekday_num, week=week
+            )
             # set_rasp18
             # for pair in range(cur_order, last_order+1):
             rasp18_id = self.db.set_rasp18(
-                semcode=semcode, day_id=rasp18_days_id, pair=cur_order,
-                kind=0, worktype=worktype, disc_id=disc_id,
-                timestart=str(time_start), timeend=str(time_end))
+                semcode=semcode,
+                day_id=rasp18_days_id,
+                pair=cur_order,
+                kind=0,
+                worktype=worktype,
+                disc_id=disc_id,
+                timestart=str(time_start),
+                timeend=str(time_end),
+            )
             # set_rasp18_groups
             self.db.set_rasp18_groups(
-                rasp18_id=rasp18_id, group_id=group_id, subgroup=0)
+                rasp18_id=rasp18_id, group_id=group_id, subgroup=0
+            )
             # set_rasp18_preps
             if teacher is not None:
                 # TODO добавить, когда можно будет делить преподов ведущих одну пару
@@ -354,14 +367,13 @@ class XParser:
                 #             rasp18_id=rasp18_id, prep_id=prep_id)
                 # else:
                 params = {"fio": teacher}
-                prep_id = self.db.get_id(
-                    table_name="sc_prep", params=params)
+                prep_id = self.db.get_id(table_name="sc_prep", params=params)
                 # если перепутали имя препода, добавим такую
                 if prep_id is None:
-                    prep_id = self.db.set_prep(fio=teacher, chair="null",
-                                               degree="null", photo="null")
-                self.db.set_rasp18_preps(
-                    rasp18_id=rasp18_id, prep_id=prep_id)
+                    prep_id = self.db.set_prep(
+                        fio=teacher, chair="null", degree="null", photo="null"
+                    )
+                self.db.set_rasp18_preps(rasp18_id=rasp18_id, prep_id=prep_id)
             # set_rasp18_rooms
             if room is not None:
                 self.db.set_rasp18_rooms(rasp18_id=rasp18_id, room=room)
@@ -387,22 +399,28 @@ class XParser:
         Разделяет пару на название дисциплины и доп информацию:
         подгруппа, недели, тип пары (лк, семинар)
         """
-        lesson_parts = {"disc_name": "", "sub_group": self.get_subgroup(lesson_cell),
-                        "parity": 0, "weeks_list": "null",
-                        "weeks_text": "null", "lesson_type": "null"}
+        lesson_parts = {
+            "disc_name": "",
+            "sub_group": self.get_subgroup(lesson_cell),
+            "parity": 0,
+            "weeks_list": "null",
+            "weeks_text": "null",
+            "worktype": "null",
+        }
 
+        # получаем тип пары (лк, семинар)
+        lesson_type = self.get_lesson_type(lesson_cell)
+        worktype = self.get_worktype_id(lesson_type)
         # получаем подгруппу
         # получаем данные по неделям
         weeks_parts = self.get_weeks_parts(lesson_cell)
         lesson_parts["parity"] = weeks_parts["parity"]
         lesson_parts["weeks_list"] = weeks_parts["weeks_list"]
         lesson_parts["weeks_text"] = weeks_parts["weeks_text"]
-        # получаем тип пары (лк, семинар)
-        lesson_parts["lesson_type"] = self.get_lesson_type(lesson_cell)
+        lesson_parts["worktype"] = worktype
 
         # удаляем лишнее и получаем название дисциплины
-        lesson_parts["disc_name"] = self.get_disc_name(
-            lesson_cell, lesson_parts)
+        lesson_parts["disc_name"] = self.get_disc_name(lesson_cell, lesson_parts)
 
         return lesson_parts
 
@@ -418,8 +436,7 @@ class XParser:
         all_weeks = list(range(1, WEEKS))
         weeks_text = ", ".join(map(str, all_weeks))
 
-        weeks_parts = {"parity": 0, "weeks_list": all_weeks,
-                       "weeks_text": weeks_text}
+        weeks_parts = {"parity": 0, "weeks_list": all_weeks, "weeks_text": weeks_text}
 
         parity = self.get_week_parity(lesson)
         weeks_parts["parity"] = parity
@@ -449,8 +466,8 @@ class XParser:
         return 0
 
     def get_lesson_type(self, lesson: str) -> str:
-        """Вытащить тип пары (лк, семинар)"""
-        lesson_type = "семинар"
+        """Вытащить тип пары (лк, пр, лб)"""
+        lesson_type = "пр"
         lesson_copy = copy.deepcopy(lesson)
 
         # чтобы избежать опечаток с пробелами, добавляем после всех точек пробел
@@ -459,10 +476,10 @@ class XParser:
         # Лин.алг.и ан.геом.   -> Лин. алг. и ан. геом.
         lesson_copy = lesson_copy.replace(".", ". ")
 
-        type_pattern = r"лк"
-        substring = re.search(type_pattern, lesson)
-        if substring:
-            lesson_type = "лекция"
+        if re.search(r"лк", lesson):
+            lesson_type = "лк"
+        if re.search(r"лб", lesson):
+            lesson_type = "лб"
         return lesson_type
 
     def get_disc_name(self, lesson: str, lesson_parts: dict) -> str:
@@ -516,7 +533,7 @@ class XParser:
         enter_year = group.split("-")[-1]
         today = datetime.datetime.now()
         group_course = today.year - int(f"20{enter_year}")
-        semcode += (group_course-1) * 2
+        semcode += (group_course - 1) * 2
         return semcode
 
     @staticmethod
@@ -527,19 +544,55 @@ class XParser:
     @staticmethod
     def get_order_by_time(time_start):
         """Определение номера пары по ее времени"""
+        order = 1
         if time_start < datetime.time(10, 40):
-            return 1
+            order = 1
         elif time_start < datetime.time(12, 40):
-            return 2
+            order = 2
         elif time_start < datetime.time(14, 20):
-            return 3
+            order = 3
         elif time_start < datetime.time(16, 20):
-            return 4
+            order = 4
         elif time_start < datetime.time(18, 00):
-            return 5
+            order = 5
         elif time_start < datetime.time(19, 40):
-            return 6
-        return 7
+            order = 6
+        else:
+            order = 7
+        return order
+
+    @staticmethod
+    def get_time_by_order(order):
+        """Получить время начала пары"""
+        time_start = "null"
+        match order:
+            case 1:
+                time_start = datetime.time(9, 00)
+            case 2:
+                time_start = datetime.time(10, 40)
+            case 3:
+                time_start = datetime.time(12, 40)
+            case 4:
+                time_start = datetime.time(14, 40)
+            case 5:
+                time_start = datetime.time(16, 20)
+            case 6:
+                time_start = datetime.time(18, 00)
+            case 7:
+                time_start = datetime.time(19, 40)
+        return time_start
+
+    @staticmethod
+    def time_in_90_minutes(time_start):
+        """Получить время через 1.5 часа"""
+        end_minutes = (time_start.minute + 30) % 60
+        end_hour = time_start.hour + 1
+
+        # если перешли в следующий час
+        if end_minutes < 30:
+            end_hour += 1
+        time_end = datetime.time(end_hour, end_minutes)
+        return time_end
 
     @staticmethod
     def is_hsplitter(ws, row) -> bool:
@@ -561,11 +614,11 @@ class XParser:
         semcode: int,
         group_id: int,
         room: str,
-        department_id: int
+        department_id: int,
     ):
         """Заполнение таблиц по данным одного дня недели определенной группы"""
         # таблица дисциплин
-        title, _ = self.get_titles(lesson_parts["disc_name"])        
+        title, _ = self.get_titles(lesson_parts["disc_name"])
         disc_id = self.db.set_disc(
             title=title,
             shorttitle=lesson_parts["disc_name"],
@@ -609,37 +662,76 @@ class XParser:
 
         # заполнение аудиторий
         self.db.set_rasp7_rooms(rasp7_id=rasp7_id, room=room)
+        self.fill_rasp18_for_disc(
+            lesson_parts["weeks_list"],
+            weekday,
+            semcode,
+            order,
+            lesson_parts["worktype"],
+            disc_id,
+        )
 
-    def get_exam_week(self, date: str):
-        """Получить номер недели для экзамена"""
-        exam_week = self.db.get_week_by_date(date)
-        # last_week = self.db.get_last_week()
-        # last_week = last_week[0][0]
-        # up_weekday = weekday.upper()
-        # if up_weekday == "ПН":
-        #     return last_week+1
-        return exam_week
+    def fill_rasp18_for_disc(
+        self, weeksarray, weekday, semcode, order, worktype, disc_id
+    ):
+        """Заполнение rasp18 для дисциплины на до конца семестра"""
+        day = self.start_date
+        day_order = (self.week_strs[weekday] - 1) % 7
+        date = datetime.datetime.strptime(day, "%Y-%m-%d").date()
+        if day_order != date.weekday:
+            order_delta = abs(day_order - date.weekday)
+            day += order_delta
+            print(day)
 
-    def get_worktype_id(self, exam_type: str):
-        """Получить id типа экзамена по строковому представлению:
-            - 0пр,1лк,2лб,
-            - 11экз,12зач,13зач-д,
-            - 14кр,15кп
+        for week in weeksarray:
+
+            params = {"semcode": semcode, "day": day, "weekday": weekday, "week": week}
+            day_id = self.db.get_id(table_name="sc_rasp18_days", params=params)
+            time_start = self.get_time_by_order(order)
+            time_end = self.time_in_90_minutes(time_start)
+            self.db.set_rasp18(
+                semcode=semcode,
+                day_id=day_id,
+                pair=order,
+                kind=0,
+                worktype=worktype,
+                disc_id=disc_id,
+                timestart=time_start,
+                timeend=time_end,
+            )
+
+    @staticmethod
+    def get_worktype_id(disc_type: str):
+        """Получить id типа дисциплины по строковому представлению:
+        - 0-пр, 1-лк, 2-лб
+        - 10-конс, 11-экз, 12-зaч, 13-зaч-д
+        - 14-кр, 15-кп
         """
-        match exam_type:
+        # изначально без типа пары
+        worktype_id = -1
+        match disc_type:
+            # просто пары
+            case "пр":
+                worktype_id = 0
+            case "лк":
+                worktype_id = 1
+            case "лб":
+                worktype_id = 2
+            # экзамены
             case "конс.":
-                return 10
+                worktype_id = 10
             case "экзамен":
-                return 11
+                worktype_id = 11
             case "зачет":
-                return 12
+                worktype_id = 12
             case "зачет-д":
-                return 13
+                worktype_id = 13
+            # сдача работ
             case "к/р":
-                return 14
+                worktype_id = 14
             case "к/п":
-                return 15
-        return -1
+                worktype_id = 15
+        return worktype_id
 
     def get_disc_id(self, lesson_name: str) -> int:
         """Получить id дисциплины по названию"""
@@ -664,9 +756,10 @@ class XParser:
             case "FFB2ECFF":
                 department_name = "другая"
 
-        dep_params = {"title": department_name}    
+        dep_params = {"title": department_name}
         department_id = self.db.get_id("sc_department", {dep_params})
         return department_id
+
 
 if __name__ == "__main__":
     parser = XParser()

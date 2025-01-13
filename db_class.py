@@ -156,8 +156,7 @@ class Database:
     def set_rasp7_groups(self, rasp7_id: int, group_id: int, sub_group: int):
         """добавить запись в семидневное расписание"""
         table_name = "sc_rasp7_groups"
-        params = {"rasp7_id": rasp7_id,
-                  "group_id": group_id, "subgroup": sub_group}
+        params = {"rasp7_id": rasp7_id, "group_id": group_id, "subgroup": sub_group}
         if self.row_exists(table_name, params):
             return
 
@@ -171,9 +170,6 @@ class Database:
     def set_rasp7_preps(self, rasp7_id: int, prep_id: int):
         """преподователи для семидневного расписания"""
         table_name = "sc_rasp7_preps"
-        params = {"rasp7_id": rasp7_id, "prep_id": prep_id}
-        if self.row_exists(table_name, params):
-            return
 
         rasp7_preps_id = self.get_prev_id(table_name)
         query = f"\
@@ -184,9 +180,6 @@ class Database:
     def set_rasp7_rooms(self, rasp7_id: int, room: str):
         """аудитории для семидневного расписания"""
         table_name = "sc_rasp7_rooms"
-        params = {"rasp7_id": rasp7_id, "room": room}
-        if self.row_exists(table_name, params):
-            return
 
         rasp7_rooms_id = self.get_prev_id(table_name)
         query = f" \
@@ -215,12 +208,10 @@ class Database:
         FROM generate_series('{start_date}'::date, '{end_date}'::date, '1 day'::interval) d;"
         self.send_request(fill_query)
 
-
     def set_rasp18_days(self, semcode: int, day: str, weekday: int, week: int):
         """Таблица соответствия дня в неделе и даты"""
         table_name = "sc_rasp18_days"
-        params = {"semcode": semcode, "day": day,
-                  "weekday": weekday}
+        params = {"semcode": semcode, "day": day, "weekday": weekday}
         rasp18_days_id = self.get_id(table_name, params)
         # если id уже есть, ничего не вставляем, возвращаем id
         if rasp18_days_id is not None:
@@ -234,19 +225,34 @@ class Database:
         self.send_request(query)
         return rasp18_days_id
 
-    def set_rasp18(self,
-                   semcode: int, day_id: int, pair: int, kind: int,
-                   worktype: int, disc_id: int, timestart: str, timeend: str):
+    def set_rasp18(
+        self,
+        semcode: int,
+        day_id: int,
+        pair: int,
+        kind: int,
+        worktype: int,
+        disc_id: int,
+        timestart: str,
+        timeend: str,
+    ):
         """
-            kind integer  -- 0обычное,1перенос,2повтор
-            worktype integer -– 0пр,1лк,2лб,
-                -- 11экз,12зач,13зач-д,
-                -- 14кр,15кп
+        kind integer  -- 0обычное,1перенос,2повтор
+        worktype integer -– 0пр,1лк,2лб,
+            -- 11экз,12зач,13зач-д,
+            -- 14кр,15кп
         """
         table_name = "sc_rasp18"
-        params = {"semcode": semcode, "day_id": day_id, "pair": pair,
-                  "kind": kind, "worktype": worktype, "disc_id": disc_id,
-                  "timestart": timestart, "timeend": timeend}
+        params = {
+            "semcode": semcode,
+            "day_id": day_id,
+            "pair": pair,
+            "kind": kind,
+            "worktype": worktype,
+            "disc_id": disc_id,
+            "timestart": timestart,
+            "timeend": timeend,
+        }
 
         # если id уже есть, ничего не вставляем, возвращаем id
         query = f" \
@@ -260,8 +266,7 @@ class Database:
     def set_rasp18_groups(self, rasp18_id: int, group_id: int, subgroup: int):
         """Таблица сооветсвия групп и пары в 18 недельном  расписании"""
         table_name = "sc_rasp18_groups"
-        params = {"rasp18_id": rasp18_id,
-                  "group_id": group_id, "subgroup": subgroup}
+        params = {"rasp18_id": rasp18_id, "group_id": group_id, "subgroup": subgroup}
         rasp18_groups_id = self.get_id(table_name, params)
         # если id уже есть, ничего не вставляем, возвращаем id
         if rasp18_groups_id is not None:
@@ -308,6 +313,7 @@ class Database:
                 ON CONFLICT DO NOTHING;"
         self.send_request(query)
         return rasp18_rooms_id
+
     # --------------------
 
     def get_prev_id(self, table_name: str) -> int:
@@ -369,7 +375,7 @@ class Database:
         week = self.send_request(query=query, is_return=True)
         week = week[0][0]
         return week
-    
+
     def fill_departments(self):
         """Заполняет таблицу кафедр"""
         query = "INSERT INTO sc_department (id, title) VALUES(1, 'ВЕГА');\
