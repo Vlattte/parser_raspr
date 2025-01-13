@@ -34,6 +34,7 @@ class Database:
                 port=self.db_port,
                 password=self.db_password,
             )
+            # TODO multidict
             cur = conn.cursor()
         except psycopg2.Error as error:
             print("connection error occured", error)
@@ -210,13 +211,13 @@ class Database:
 
         cur_semcode = 1
         fill_query = f"\
-        INSERT INTO sc_rasp18_days(semcode, day, weekday, week) \
-            SELECT \
-                {cur_semcode}, \
-                d::date, \
-                EXTRACT(DOW FROM d)::integer, \
-                EXTRACT(WEEK FROM d)::integer - EXTRACT(WEEK FROM'{start_date}'::date) + 1 \
-            FROM generate_series('{start_date}'::date, '{end_date}'::date, '1 day'::interval) d;"
+        INSERT INTO sc_rasp18_days (semcode, day, weekday, week)\
+        SELECT\
+            {cur_semcode},\
+            d::date,\
+            EXTRACT(DOW FROM d)::integer,\
+            FLOOR(EXTRACT(EPOCH FROM (d::timestamp - '{start_date}'::timestamp)) / 604800) + 1 \
+        FROM generate_series('{start_date}'::date, '{end_date}'::date, '1 day'::interval) d;"
         self.send_request(fill_query)
 
 
@@ -251,17 +252,14 @@ class Database:
         params = {"semcode": semcode, "day_id": day_id, "pair": pair,
                   "kind": kind, "worktype": worktype, "disc_id": disc_id,
                   "timestart": timestart, "timeend": timeend}
-        rasp18_id = self.get_id(table_name, params)
-        # если id уже есть, ничего не вставляем, возвращаем id
-        if rasp18_id is not None:
-            return rasp18_id
 
-        rasp18_id = self.get_prev_id(table_name)
+        # если id уже есть, ничего не вставляем, возвращаем id
         query = f" \
-                INSERT INTO {table_name} (id, semcode, day_id, pair, kind, worktype, disc_id, timestart, timeend) \
-                VALUES ({rasp18_id}, {semcode}, {day_id}, {pair}, {kind}, {worktype}, {disc_id}, '{timestart}', '{timeend}')  \
-                ON CONFLICT DO NOTHING;"
-        self.send_request(query)
+                INSERT INTO {table_name} (semcode, day_id, pair, kind, worktype, disc_id, timestart, timeend) \
+                VALUES ({semcode}, {day_id}, {pair}, {kind}, {worktype}, {disc_id}, '{timestart}', '{timeend}')  \
+                ON CONFLICT DO NOTHING RETURNING id;"
+        rasp18_id = self.send_request(query, True)
+        rasp18_id = rasp18_id[0][0]
         return rasp18_id
 
     def set_rasp18_groups(self, rasp18_id: int, group_id: int, subgroup: int):
@@ -276,8 +274,8 @@ class Database:
 
         rasp18_groups_id = self.get_prev_id(table_name)
         query = f" \
-                INSERT INTO {table_name} (id, rasp18_id, group_id, subgroup) \
-                VALUES ({rasp18_groups_id}, {rasp18_id}, {group_id}, {subgroup})  \
+                INSERT INTO {table_name} (rasp18_id, group_id, subgroup) \
+                VALUES ({rasp18_id}, {group_id}, {subgroup})  \
                 ON CONFLICT DO NOTHING;"
         self.send_request(query)
         return rasp18_groups_id
@@ -293,8 +291,8 @@ class Database:
 
         rasp18_preps_id = self.get_prev_id(table_name)
         query = f" \
-                INSERT INTO {table_name} (id, rasp18_id, prep_id) \
-                VALUES ({rasp18_preps_id}, {rasp18_id}, {prep_id})  \
+                INSERT INTO {table_name} (rasp18_id, prep_id) \
+                VALUES ({rasp18_id}, {prep_id})  \
                 ON CONFLICT DO NOTHING;"
         self.send_request(query)
         return rasp18_preps_id
