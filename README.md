@@ -28,7 +28,11 @@ PARSE_TYPE="DEFAULT"
     либо "DEFAULT" (пары в семестре), либо "SESSION" - расписание сессии
 
 
-И установить зависимости:
+#### Создание таблиц
+
+psql -U postgres -d postgres -a -f [путь_до_файла_rasp.sql]
+
+#### Установка зависимостей:
 
 pip install -r requirements.txt
 

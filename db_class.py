@@ -202,6 +202,24 @@ class Database:
     # ---------rasp18--------- #
     # ------------------------ #
 
+    def fill_rasp18_for_period(self, start_date: str, end_date: str):
+        """Заполнение дней с start_date до end_date"""
+
+        delete_query = "DELETE FROM sc_rasp18_days;"
+        self.send_request(delete_query)
+
+        cur_semcode = 1
+        fill_query = f"\
+        INSERT INTO sc_rasp18_days(semcode, day, weekday, week) \
+            SELECT \
+                {cur_semcode}, \
+                d::date, \
+                EXTRACT(DOW FROM d)::integer, \
+                EXTRACT(WEEK FROM d)::integer - EXTRACT(WEEK FROM'{start_date}'::date) + 1 \
+            FROM generate_series('{start_date}'::date, '{end_date}'::date, '1 day'::interval) d;"
+        self.send_request(fill_query)
+
+
     def set_rasp18_days(self, semcode: int, day: str, weekday: int, week: int):
         """Таблица соответствия дня в неделе и даты"""
         table_name = "sc_rasp18_days"
@@ -229,8 +247,6 @@ class Database:
                 -- 11экз,12зач,13зач-д,
                 -- 14кр,15кп
         """
-        if disc_id is None:
-            print("AAAAAAA")
         table_name = "sc_rasp18"
         params = {"semcode": semcode, "day_id": day_id, "pair": pair,
                   "kind": kind, "worktype": worktype, "disc_id": disc_id,
@@ -352,3 +368,11 @@ class Database:
         """
         last_week = self.send_request(query, True)
         return last_week
+
+    def get_week_by_date(self, date: str):
+        """Получить учебную неделю по дате"""
+        table_name = "sc_rasp18_days"
+        query = f"SELECT week FROM {table_name} WHERE day = '{date}';"
+        week = self.send_request(query=query, is_return=True)
+        week = week[0][0]
+        return week
