@@ -40,3 +40,10 @@ pip install -r requirements.txt
 ## Запуск
 
 python parser.py
+
+
+цвета
+FFCCFF66 -> только для ВЕГИ
+FFFFE15A -> Ведет кафедра ВМ
+FFE5FF99 -> Ведет кафедра Веги
+FFB2ECFF -> Ведут другие кафедры

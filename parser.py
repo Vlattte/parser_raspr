@@ -6,6 +6,7 @@ import json
 import copy
 import datetime
 import openpyxl
+import openpyxl.styles.colors
 
 import db_class
 
@@ -250,7 +251,6 @@ class XParser:
 
         while row < max_row:
             date_cell = ws.cell(row, self.para_col).value
-
             # если следующий день
             prev_date_cell, date_cell = self.swap_with_prev_value(
                 prev_date_cell, date_cell)
@@ -260,6 +260,21 @@ class XParser:
             lesson_name = ws.cell(row+1, col).value
             teacher = ws.cell(row+2, col).value
             room = ws.cell(row+2, col+1).value
+
+            cur_color = ws.cell(row, col+1).fill.start_color.index
+
+            department_name = "ВЕГА"
+            match cur_color:
+                case "FFCCFF66":
+                    department_name = "только для ВЕГИ"
+                # case "":
+                #     department_name = "только для ВМ"
+                case "FFFFE15A":
+                    department_name = "ВМ"
+                case "FFE5FF99":
+                    department_name = "ВЕГА"
+                case "FFB2ECFF":
+                    department_name = "другая"
 
             # время начала экзамена
             time_start = ws.cell(row, col).value
@@ -326,6 +341,11 @@ class XParser:
                 rasp18_id=rasp18_id, group_id=group_id, subgroup=0)
             # set_rasp18_preps
             if teacher is not None:
+                if "Крыжановский Ю.М." in teacher:
+                    print("Крыжановский Ю.М." + cur_color)
+                if "Хрычев Д.А." in teacher:
+                    print("Хрычев Д.А. " + cur_color)
+
                 # TODO добавить, когда можно будет делить преподов ведущих одну пару
                 # teacher = teacher.replace(", ", ",")
                 # if teacher.find("\n") != -1 or teacher.find(",\n") != -1:
@@ -350,7 +370,7 @@ class XParser:
                 # если перепутали имя препода, добавим такую
                 if prep_id is None:
                     prep_id = self.db.set_prep(fio=teacher, chair="null",
-                                                degree="null", photo="null")
+                                               degree="null", photo="null")
                 self.db.set_rasp18_preps(
                     rasp18_id=rasp18_id, prep_id=prep_id)
             # set_rasp18_rooms

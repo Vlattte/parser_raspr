@@ -79,11 +79,6 @@ class Database:
             "weeksarray": weeksarray,
             "weekstext": weekstext,
         }
-
-        rasp7_id = self.get_id(table_name, params)
-        if rasp7_id is not None:
-            return rasp7_id
-
         rasp7_id = self.get_prev_id(table_name)
         query = f" \
                 INSERT INTO {table_name} (id, semcode, version, disc_id, weekday, pair, weeksarray, weekstext) \
@@ -374,3 +369,12 @@ class Database:
         week = self.send_request(query=query, is_return=True)
         week = week[0][0]
         return week
+    
+    def fill_departments(self):
+        """Заполняет таблицу кафедр"""
+        query = "INSERT INTO sc_department (id, title) VALUES(1, 'ВЕГА');\
+                 INSERT INTO sc_department (id, title) VALUES(2, 'ВМ');\
+                 INSERT INTO sc_department (id, title) VALUES(3, 'только для ВЕГИ');\
+                 INSERT INTO sc_department (id, title) VALUES(4, 'только для ВМ');\
+                 INSERT INTO sc_department (id, title) VALUES(5, 'другая');"
+        self.send_request(query)
