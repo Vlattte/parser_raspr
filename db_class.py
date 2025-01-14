@@ -51,7 +51,7 @@ class Database:
                 return_data = cur.fetchall()
                 return return_data
         except psycopg2.Error as error:
-            print("PostgreSQL error occured", error)
+            print(f"PostgreSQL error occured {error} after request:\n{query}")
         finally:
             if conn:
                 conn.commit()
@@ -70,15 +70,6 @@ class Database:
     ) -> int:
         """Заполнение таблицы sc_rasp7"""
         table_name = "sc_rasp7"
-        params = {
-            "semcode": semcode,
-            "version": version,
-            "disc_id": disc_id,
-            "weekday": weekday,
-            "pair": pair,
-            "weeksarray": weeksarray,
-            "weekstext": weekstext,
-        }
         rasp7_id = self.get_prev_id(table_name)
         query = f" \
                 INSERT INTO {table_name} (id, semcode, version, disc_id, weekday, pair, weeksarray, weekstext) \
@@ -156,9 +147,6 @@ class Database:
     def set_rasp7_groups(self, rasp7_id: int, group_id: int, sub_group: int):
         """добавить запись в семидневное расписание"""
         table_name = "sc_rasp7_groups"
-        params = {"rasp7_id": rasp7_id, "group_id": group_id, "subgroup": sub_group}
-        if self.row_exists(table_name, params):
-            return
 
         rasp7_groups_id = self.get_prev_id(table_name)
         query = f"\
@@ -191,38 +179,41 @@ class Database:
     # ---------rasp18--------- #
     # ------------------------ #
 
-    def fill_rasp18_for_period(self, start_date: str, end_date: str):
+    def fill_rasp18_for_period(self, semcode: int, start_date: str, end_date: str):
         """Заполнение дней с start_date до end_date"""
 
-        delete_query = "DELETE FROM sc_rasp18_days;"
-        self.send_request(delete_query)
+        # delete_query = "DELETE FROM sc_rasp18_days;"
+        # self.send_request(delete_query)
+        date = datetime.datetime.strptime(start_date, "%Y-%m-%d").date()
+        cur_week = 1
+        while str(date) != end_date:
+            cur_weekday = (date.weekday()+1) % 7
+            self.set_rasp18_days(
+                    semcode=semcode, day=str(date), weekday=cur_weekday, week=cur_week
+                )
+            date += datetime.timedelta(days=1)
+            if date.weekday() == 0:  # если новый понедельник
+                cur_week += 1
 
-        cur_semcode = 1
-        fill_query = f"\
-        INSERT INTO sc_rasp18_days (semcode, day, weekday, week)\
-        SELECT\
-            {cur_semcode},\
-            d::date,\
-            EXTRACT(DOW FROM d)::integer,\
-            FLOOR(EXTRACT(EPOCH FROM (d::timestamp - '{start_date}'::timestamp)) / 604800) + 1 \
-        FROM generate_series('{start_date}'::date, '{end_date}'::date, '1 day'::interval) d;"
-        self.send_request(fill_query)
+        # fill_query = f"\
+        # INSERT INTO sc_rasp18_days (semcode, day, weekday, week)\
+        # SELECT\
+        #     {semcode},\
+        #     d::date,\
+        #     EXTRACT(DOW FROM d)::integer,\
+        #     FLOOR(EXTRACT(EPOCH FROM (d::timestamp - '{start_date}'::timestamp)) / 604800) + 1 \
+        # FROM generate_series('{start_date}'::date, '{end_date}'::date, '1 day'::interval) d;"
+        # self.send_request(fill_query)
 
     def set_rasp18_days(self, semcode: int, day: str, weekday: int, week: int):
         """Таблица соответствия дня в неделе и даты"""
         table_name = "sc_rasp18_days"
-        params = {"semcode": semcode, "day": day, "weekday": weekday}
-        rasp18_days_id = self.get_id(table_name, params)
-        # если id уже есть, ничего не вставляем, возвращаем id
-        if rasp18_days_id is not None:
-            return rasp18_days_id
-
-        rasp18_days_id = self.get_prev_id(table_name)
         query = f" \
                 INSERT INTO {table_name} (semcode, day, weekday, week) \
                 VALUES ({semcode}, '{day}', {weekday}, {week})  \
-                ON CONFLICT DO NOTHING;"
-        self.send_request(query)
+                ON CONFLICT DO NOTHING RETURNING id;"
+        rasp18_days_id = self.send_request(query, True)
+        rasp18_days_id = rasp18_days_id[0][0]
         return rasp18_days_id
 
     def set_rasp18(
@@ -243,21 +234,14 @@ class Database:
             -- 14кр,15кп
         """
         table_name = "sc_rasp18"
-        params = {
-            "semcode": semcode,
-            "day_id": day_id,
-            "pair": pair,
-            "kind": kind,
-            "worktype": worktype,
-            "disc_id": disc_id,
-            "timestart": timestart,
-            "timeend": timeend,
-        }
 
+        # только часы и минуты, секунды образаем
+        timestart_hm = timestart[:-3]
+        timeend_hm = timeend[:-3]
         # если id уже есть, ничего не вставляем, возвращаем id
         query = f" \
                 INSERT INTO {table_name} (semcode, day_id, pair, kind, worktype, disc_id, timestart, timeend) \
-                VALUES ({semcode}, {day_id}, {pair}, {kind}, {worktype}, {disc_id}, '{timestart}', '{timeend}')  \
+                VALUES ({semcode}, {day_id}, {pair}, {kind}, {worktype}, {disc_id}, '{timestart_hm}', '{timeend_hm}')  \
                 ON CONFLICT DO NOTHING RETURNING id;"
         rasp18_id = self.send_request(query, True)
         rasp18_id = rasp18_id[0][0]
@@ -266,52 +250,38 @@ class Database:
     def set_rasp18_groups(self, rasp18_id: int, group_id: int, subgroup: int):
         """Таблица сооветсвия групп и пары в 18 недельном  расписании"""
         table_name = "sc_rasp18_groups"
-        params = {"rasp18_id": rasp18_id, "group_id": group_id, "subgroup": subgroup}
-        rasp18_groups_id = self.get_id(table_name, params)
-        # если id уже есть, ничего не вставляем, возвращаем id
-        if rasp18_groups_id is not None:
-            return rasp18_groups_id
 
-        rasp18_groups_id = self.get_prev_id(table_name)
         query = f" \
                 INSERT INTO {table_name} (rasp18_id, group_id, subgroup) \
                 VALUES ({rasp18_id}, {group_id}, {subgroup})  \
-                ON CONFLICT DO NOTHING;"
-        self.send_request(query)
+                ON CONFLICT DO NOTHING RETURNING id;"
+
+        rasp18_groups_id = self.send_request(query, True)
+        rasp18_groups_id = rasp18_groups_id[0][0]
         return rasp18_groups_id
 
     def set_rasp18_preps(self, rasp18_id: int, prep_id: int):
         """Таблица сооветсвия групп и пары в 18 недельном  расписании"""
         table_name = "sc_rasp18_preps"
-        params = {"rasp18_id": rasp18_id, "prep_id": prep_id}
-        rasp18_preps_id = self.get_id(table_name, params)
-        # если id уже есть, ничего не вставляем, возвращаем id
-        if rasp18_preps_id is not None:
-            return rasp18_preps_id
 
-        rasp18_preps_id = self.get_prev_id(table_name)
         query = f" \
                 INSERT INTO {table_name} (rasp18_id, prep_id) \
                 VALUES ({rasp18_id}, {prep_id})  \
-                ON CONFLICT DO NOTHING;"
-        self.send_request(query)
+                ON CONFLICT DO NOTHING RETURNING id;"
+        rasp18_preps_id = self.send_request(query, True)
+        rasp18_preps_id = rasp18_preps_id[0][0]
         return rasp18_preps_id
 
     def set_rasp18_rooms(self, rasp18_id: int, room: str):
         """Таблица сооветсвия групп и пары в 18 недельном  расписании"""
         table_name = "sc_rasp18_rooms"
-        params = {"rasp18_id": rasp18_id, "room": room}
-        rasp18_rooms_id = self.get_id(table_name, params)
-        # если id уже есть, ничего не вставляем, возвращаем id
-        if rasp18_rooms_id is not None:
-            return rasp18_rooms_id
 
-        rasp18_rooms_id = self.get_prev_id(table_name)
         query = f" \
-                INSERT INTO {table_name} (id, rasp18_id, room) \
-                VALUES ({rasp18_rooms_id}, {rasp18_id}, '{room}')  \
-                ON CONFLICT DO NOTHING;"
-        self.send_request(query)
+                INSERT INTO {table_name} (rasp18_id, room) \
+                VALUES ({rasp18_id}, '{room}')  \
+                ON CONFLICT DO NOTHING RETURNING id;"
+        rasp18_rooms_id = self.send_request(query, True)
+        rasp18_rooms_id = rasp18_rooms_id[0][0]
         return rasp18_rooms_id
 
     # --------------------
@@ -340,6 +310,8 @@ class Database:
             if val is None:
                 continue
             if isinstance(val, str):
+                where_statements += f"{key} = '{val}' AND "
+            elif isinstance(val, datetime.datetime):
                 where_statements += f"{key} = '{val}' AND "
             elif isinstance(val, list):
                 where_statements += f"{key} = ARRAY{val} AND "
@@ -378,9 +350,9 @@ class Database:
 
     def fill_departments(self):
         """Заполняет таблицу кафедр"""
-        query = "INSERT INTO sc_department (id, title) VALUES(1, 'ВЕГА');\
-                 INSERT INTO sc_department (id, title) VALUES(2, 'ВМ');\
-                 INSERT INTO sc_department (id, title) VALUES(3, 'только для ВЕГИ');\
-                 INSERT INTO sc_department (id, title) VALUES(4, 'только для ВМ');\
-                 INSERT INTO sc_department (id, title) VALUES(5, 'другая');"
+        query = "INSERT INTO sc_department (id, title) VALUES(1, 'ВЕГА') ON CONFLICT DO NOTHING;;\
+                 INSERT INTO sc_department (id, title) VALUES(2, 'ВМ') ON CONFLICT DO NOTHING;;\
+                 INSERT INTO sc_department (id, title) VALUES(3, 'только для ВЕГИ') ON CONFLICT DO NOTHING;;\
+                 INSERT INTO sc_department (id, title) VALUES(4, 'только для ВМ') ON CONFLICT DO NOTHING;;\
+                 INSERT INTO sc_department (id, title) VALUES(5, 'другая') ON CONFLICT DO NOTHING;;"
         self.send_request(query)
