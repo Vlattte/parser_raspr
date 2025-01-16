@@ -22,7 +22,11 @@ class Database:
         self.db_name = os.getenv("DB_NAME")
         self.db_user = os.getenv("DB_USER")
         self.db_password = os.getenv("DB_PASSWORD")
-        self.db_port = os.getenv("DB_INTERNAL_PORT")
+        self.db_port = os.getenv("DB_PORT")
+
+        self.requests_file_name = "sql_requests.sql"
+        file_to_clear = open(self.requests_file_name, "w", encoding="utf-8")
+        file_to_clear.close()
 
     def set_conn(self) -> tuple[connection, cursor]:
         """Установка соединения"""
@@ -47,6 +51,11 @@ class Database:
         try:
             conn, cur = self.set_conn()
             cur.execute(query)
+
+            # записываем историю запросов
+            with open(self.requests_file_name, "a+", encoding="utf-8") as sql_requests:
+                sql_requests.write(query)
+
             if is_return:
                 return_data = cur.fetchall()
                 if len(return_data) > 0:
@@ -95,9 +104,7 @@ class Database:
             return group_id
 
         group_id = self.get_prev_id(table_name)
-        query = f"\
-        INSERT INTO {table_name} (id, title) \
-        VALUES ({group_id}, '{group}') ON CONFLICT DO NOTHING;"
+        query = f"INSERT INTO {table_name} (id, title) VALUES ({group_id}, '{group}') ON CONFLICT DO NOTHING;"
         self.send_request(query)
         return group_id
 
@@ -176,6 +183,8 @@ class Database:
     def set_rasp7_preps(self, rasp7_id: int, prep_id: int):
         """преподователи для семидневного расписания"""
         table_name = "sc_rasp7_preps"
+        if prep_id is None or prep_id == "null":
+            return None
 
         query = f"\
                 INSERT INTO {table_name} (rasp7_id, prep_id) \
@@ -296,6 +305,9 @@ class Database:
         """Таблица сооветсвия групп и пары в 18 недельном  расписании"""
         table_name = "sc_rasp18_preps"
 
+        if prep_id == "null" or prep_id is None:
+            return None
+
         params = {
             "rasp18_id": rasp18_id,
             "prep_id": prep_id
@@ -334,7 +346,7 @@ class Database:
 
     def get_prev_id(self, table_name: str) -> int:
         """получение id последней записи в таблице"""
-        query = f"SELECT MAX(id) FROM {table_name}"
+        query = f"SELECT MAX(id) FROM {table_name};"
         prev_id = self.send_request(query, True)
 
         if prev_id is None:
@@ -374,14 +386,6 @@ class Database:
 
         return return_id
 
-    def get_last_week(self):
-        table_name = "sc_rasp18_days"
-        query = f"""\
-            SELECT MAX(week) from {table_name};
-        """
-        last_week = self.send_request(query, True)
-        return last_week
-
     def get_week_by_date(self, date: str):
         """Получить учебную неделю по дате"""
         table_name = "sc_rasp18_days"
@@ -391,9 +395,9 @@ class Database:
 
     def fill_departments(self):
         """Заполняет таблицу кафедр"""
-        query = "INSERT INTO sc_department (id, title) VALUES(1, 'ВЕГА') ON CONFLICT DO NOTHING;;\
-                 INSERT INTO sc_department (id, title) VALUES(2, 'ВМ') ON CONFLICT DO NOTHING;;\
-                 INSERT INTO sc_department (id, title) VALUES(3, 'только для ВЕГИ') ON CONFLICT DO NOTHING;;\
-                 INSERT INTO sc_department (id, title) VALUES(4, 'только для ВМ') ON CONFLICT DO NOTHING;;\
-                 INSERT INTO sc_department (id, title) VALUES(5, 'другая') ON CONFLICT DO NOTHING;;"
+        query = "INSERT INTO sc_department (id, title) VALUES(1, 'ВЕГА') ON CONFLICT DO NOTHING;\
+                 INSERT INTO sc_department (id, title) VALUES(2, 'ВМ') ON CONFLICT DO NOTHING;\
+                 INSERT INTO sc_department (id, title) VALUES(3, 'только для ВЕГИ') ON CONFLICT DO NOTHING;\
+                 INSERT INTO sc_department (id, title) VALUES(4, 'только для ВМ') ON CONFLICT DO NOTHING;\
+                 INSERT INTO sc_department (id, title) VALUES(5, 'другая') ON CONFLICT DO NOTHING;"
         self.send_request(query)

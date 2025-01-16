@@ -115,7 +115,7 @@ class XParser:
         # обновляем код семетра по заголовку
         self.semcode = self.get_semcode(rasp_title)
 
-        # TODO ВНИМАНИЕ, костыль, надо убрать
+        # TODO ВНИМАНИЕ, коsстыль, надо убрать
         # заполняем кафедры
         self.db.fill_departments()
         # заполняем дни таблицы rasp18_days
@@ -339,7 +339,6 @@ class XParser:
                 semcode=self.semcode, day=exam_date, weekday=weekday_num, week=week
             )
             # set_rasp18
-            # for pair in range(cur_order, last_order+1):
             rasp18_id = self.db.set_rasp18(
                 semcode=self.semcode,
                 day_id=rasp18_days_id,
