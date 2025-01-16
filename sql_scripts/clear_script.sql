@@ -11,6 +11,8 @@ delete from
   sc_rasp18_days;
 
 delete FROM
+  sc_department;
+delete FROM
   sc_disc;
 delete FROM
     sc_group;
