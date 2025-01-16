@@ -20,8 +20,10 @@ SPRING_SUBSTR = "весен"
 WINTER_SUBSTR = "зимн"
 SUMMER_SUBSTR = "летн"
 
-# TODO распараллелить, а то долго
 
+# TODO распараллелить, а то ОЧЕНЬ долго
+# TODO если идет пустая пара, а затем пара с пустым преподом, то в путого препода пишется prev_teacher
+# TODO сломались цвета некоторый дисциплин (Хрычев первая же пара у первой же группы с цветом ВЕГИ)
 
 class XParser:
     """Парсер excel расписания"""
@@ -115,7 +117,7 @@ class XParser:
         # обновляем код семетра по заголовку
         self.semcode = self.get_semcode(rasp_title)
 
-        # TODO ВНИМАНИЕ, коsстыль, надо убрать
+        # TODO ВНИМАНИЕ, костыль, надо убрать
         # заполняем кафедры
         self.db.fill_departments()
         # заполняем дни таблицы rasp18_days
@@ -629,14 +631,14 @@ class XParser:
 
     # TODO переименовать
     def fill_group_day_db(
-        self,
-        lesson_parts: dict,
-        teacher: str,
-        order: int,
-        weekday: str,
-        group_id: int,
-        room: str,
-        department_id: int,
+            self,
+            lesson_parts: dict,
+            teacher: str,
+            order: int,
+            weekday: str,
+            group_id: int,
+            room: str,
+            department_id: int,
     ):
         """Заполнение таблиц по данным одного дня недели определенной группы"""
         # таблица дисциплин
@@ -700,7 +702,7 @@ class XParser:
         )
 
     def fill_rasp18_for_disc(
-        self, weeksarray, weekday, order, worktype, disc_id, prep_id, room, group_id, subgroup
+            self, weeksarray, weekday, order, worktype, disc_id, prep_id, room, group_id, subgroup
     ):
         """Заполнение rasp18 для дисциплины на до конца семестра"""
         day_order = (self.week_strs.index(weekday) - 1) % 7
@@ -712,7 +714,7 @@ class XParser:
                   "weekday": weekday_num, "week": 1}
         for week in weeksarray:
             # считаем дату пары
-            cur_delta = weekday_delta + (week-1)*7
+            cur_delta = weekday_delta + (week - 1) * 7
             cur_date = first_day + datetime.timedelta(days=cur_delta)
             params["week"] = week
             params["day"] = str(cur_date)

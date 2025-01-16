@@ -7,3 +7,5 @@ __pycache__/*
 *.json
 
 .idea/*
+
+sql_requests.sql
