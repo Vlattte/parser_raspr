@@ -5,8 +5,10 @@
 import os
 import psycopg2
 from psycopg2._psycopg import cursor, connection
+# import sqlite3
 from dotenv import load_dotenv
 import datetime
+from progress.counter import Stack
 
 load_dotenv()
 
@@ -25,13 +27,17 @@ class Database:
         self.db_port = os.getenv("DB_PORT")
 
         self.requests_file_name = "sql_requests.sql"
-        file_to_clear = open(self.requests_file_name, "w", encoding="utf-8")
-        file_to_clear.close()
 
-    def set_conn(self) -> tuple[connection, cursor]:
+        self.conn = None
+        self.cur = None
+        self.sql_requests = None
+
+    def set_conn(self):
         """Установка соединения"""
         try:
-            conn = psycopg2.connect(
+            self.sql_requests = open(self.requests_file_name, "w", encoding="utf-8")
+            # self.conn = sqlite3.connect('file:cachedb?mode=memory&cache=shared')
+            self.conn = psycopg2.connect(
                 database=self.db_name,
                 user=self.db_user,
                 host=self.db_host,
@@ -39,25 +45,33 @@ class Database:
                 password=self.db_password,
             )
             # TODO multidict
-            cur = conn.cursor()
+            self.cur = self.conn.cursor()
         except psycopg2.Error as error:
             print("connection error occured", error)
-            conn, cur = (None, None)
-        return conn, cur
+            self.conn, self.cur = (None, None)
+
+    def close_conn(self):
+        """Закрыть соединение с базой"""
+        # если файл открыт, закрываем
+        if self.sql_requests:
+            self.sql_requests.close()
+
+        # если соединение открыто, закрываем
+        if self.conn:
+            self.cur.close()
+            self.conn.close()
 
     def send_request(self, query: str, is_return: bool = False):
         """отправка запроса query и возврат данных, если is_return == True"""
-        conn = None
         try:
-            conn, cur = self.set_conn()
-            cur.execute(query)
+            self.cur.execute(query)
 
             # записываем историю запросов
             with open(self.requests_file_name, "a+", encoding="utf-8") as sql_requests:
                 sql_requests.write(query)
 
             if is_return:
-                return_data = cur.fetchall()
+                return_data = self.cur.fetchall()
                 if len(return_data) > 0:
                     return_data = return_data[0][0]
                 else:
@@ -66,10 +80,8 @@ class Database:
         except psycopg2.Error as error:
             print(f"PostgreSQL error occured {error} after request:\n{query}")
         finally:
-            if conn:
-                conn.commit()
-                cur.close()
-                conn.close()
+            if self.conn:
+                self.conn.commit()
 
     def set_prep(
         self, fio: str, chair: str = None, degree: str = None, photo: str = None
@@ -104,7 +116,9 @@ class Database:
             return group_id
 
         group_id = self.get_prev_id(table_name)
-        query = f"INSERT INTO {table_name} (id, title) VALUES ({group_id}, '{group}') ON CONFLICT DO NOTHING;"
+        query = f"""INSERT INTO {table_name} (id, title)
+                    VALUES ({group_id}, '{group}')
+                    ON CONFLICT DO NOTHING;"""
         self.send_request(query)
         return group_id
 
@@ -119,6 +133,9 @@ class Database:
         return: disc_id
         """
         table_name = "sc_disc"
+        if title is None and shorttitle is None or department_id == -1:
+            print(f"""ОШИБКА при записи дисциплины: title: {title},
+                    shorttitle: {shorttitle}, department_id: {department_id}""")
 
         # вторая такая же дисциплина может быть, только если у них не совпадает department_id
         # поэтому проверяем на повтор
@@ -209,8 +226,11 @@ class Database:
     def fill_rasp18_for_period(self, semcode: int, start_date: str, end_date: str):
         """Заполнение дней с start_date до end_date"""
 
-        # delete_query = "DELETE FROM sc_rasp18_days;"
-        # self.send_request(delete_query)
+        duration = datetime.datetime.strptime(end_date, "%Y-%m-%d") - datetime.datetime.strptime(start_date, "%Y-%m-%d")
+        fill_days_bar = Stack('Заполнение rasp18_days', max=duration.days)
+        fill_days_bar.check_tty = False
+        fill_days_bar.start()
+
         date = datetime.datetime.strptime(start_date, "%Y-%m-%d").date()
         cur_week = 1
         while str(date) != end_date:
@@ -221,16 +241,8 @@ class Database:
             date += datetime.timedelta(days=1)
             if date.weekday() == 0:  # если новый понедельник
                 cur_week += 1
-
-        # fill_query = f"\
-        # INSERT INTO sc_rasp18_days (semcode, day, weekday, week)\
-        # SELECT\
-        #     {semcode},\
-        #     d::date,\
-        #     EXTRACT(DOW FROM d)::integer,\
-        #     FLOOR(EXTRACT(EPOCH FROM (d::timestamp - '{start_date}'::timestamp)) / 604800) + 1 \
-        # FROM generate_series('{start_date}'::date, '{end_date}'::date, '1 day'::interval) d;"
-        # self.send_request(fill_query)
+            fill_days_bar.next()
+        fill_days_bar.finish()
 
     def set_rasp18_days(self, semcode: int, day: str, weekday: int, week: int):
         """Таблица соответствия дня в неделе и даты"""
@@ -259,6 +271,7 @@ class Database:
         disc_id: int,
         timestart: str,
         timeend: str,
+        is_execute_req: bool = True
     ):
         """
         kind integer  -- 0обычное,1перенос,2повтор
@@ -276,8 +289,12 @@ class Database:
                 INSERT INTO {table_name} (semcode, day_id, pair, kind, worktype, disc_id, timestart, timeend) \
                 VALUES ({semcode}, {day_id}, {pair}, {kind}, {worktype}, {disc_id}, '{timestart_hm}', '{timeend_hm}')  \
                 ON CONFLICT DO NOTHING RETURNING id;"
-        rasp18_id = self.send_request(query, True)
-        return rasp18_id
+        if is_execute_req:
+            rasp18_id = self.send_request(query, True)
+            return rasp18_id
+
+        # если не сказано выполнять запрос, то возвращаем его
+        return query
 
     def set_rasp18_groups(self, rasp18_id: int, group_id: int, subgroup: int):
         """Таблица сооветствия групп и пары в 18 недельном  расписании"""
@@ -360,8 +377,17 @@ class Database:
         returned_id = self.get_id(table_name, params)
         return returned_id is not None
 
-    def get_id(self, table_name, params: dict):
+    def get_id(self, table_name: str, params: dict):
         """Получить id, если запись существует"""
+        query = self.get_id_request(table_name, params)
+        return_id = self.send_request(query, is_return=True)
+        if return_id is None:
+            return None
+
+        return return_id
+
+    def get_id_request(self, table_name: str, params: dict) -> str:
+        """Возвращает запрос для получения id"""
         where_statements = ""
         for key, val in params.items():
             if val is None:
@@ -379,12 +405,7 @@ class Database:
         query = f"""\
             SELECT id FROM {table_name} WHERE {where_statements};
         """
-        return_id = self.send_request(query, is_return=True)
-
-        if return_id is None:
-            return None
-
-        return return_id
+        return query
 
     def get_week_by_date(self, date: str):
         """Получить учебную неделю по дате"""

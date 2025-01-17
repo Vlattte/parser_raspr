@@ -7,6 +7,7 @@ import copy
 import datetime
 import openpyxl
 import openpyxl.styles.colors
+from progress.bar import ShadyBar
 
 import db_class
 
@@ -23,7 +24,6 @@ SUMMER_SUBSTR = "летн"
 
 # TODO распараллелить, а то ОЧЕНЬ долго
 # TODO если идет пустая пара, а затем пара с пустым преподом, то в путого препода пишется prev_teacher
-# TODO сломались цвета некоторый дисциплин (Хрычев первая же пара у первой же группы с цветом ВЕГИ)
 
 class XParser:
     """Парсер excel расписания"""
@@ -35,7 +35,6 @@ class XParser:
         self.db = db_class.Database()
 
         # тип файла для парсинга
-        # TODO пока идет как параметр в .env, а так фомжно брать из главного заголовка файла
         self.parse_type = os.getenv("PARSE_TYPE")
         if self.parse_type is None:
             self.parse_type = "DEFAULT"
@@ -53,12 +52,12 @@ class XParser:
 
         # позиция ячейки с версией
         self.version_col = 1
+        self.version = 0
 
         self.subgroups = ["(1пг)", "(2пг)"]
         self.parity = ["Iн", "IIн"]
         self.week_strs = ["ВС", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"]
 
-        self.version = 0
         self.end_table_pattern = r"(\w* )?\d курс"
 
         # дата начала и конца семестра
@@ -82,19 +81,9 @@ class XParser:
         self.version_col = 2
         self.group_row = 4
 
-    @staticmethod
-    def swap_with_prev_value(prev_val, cur_val):
-        """Если текущее значение None, присвоить ему предыдущее, иначе сохранить в предыдущее"""
-        prev = prev_val
-        cur = cur_val
-        if not cur:
-            cur = prev
-        else:
-            prev = cur
-        return prev, cur
-
-    def parse(self) -> dict:
+    def parse(self):
         """Парсим данные"""
+        self.db.set_conn()
         ws = openpyxl.load_workbook(filename=self.file_name, read_only=True).active
         # ------------------Определяем границы расписания------------------
         min_col = ws.min_column
@@ -124,16 +113,11 @@ class XParser:
         self.db.fill_rasp18_for_period(self.semcode, self.start_date, self.end_date)
 
         # ---------------Парсим расписание в цикле по группам--------------
-        groups = {}
         for col in range(min_col, max_col + 1):
             group_name = ws.cell(self.group_row, col).value
             # если заголовок столбца пустой, пропускаем
             if not group_name:
                 continue
-
-            # temp
-            print()
-            print(group_name)
 
             # в сессии имя группы с курсом
             if self.parse_type == "SESSION":
@@ -141,18 +125,15 @@ class XParser:
 
             # заполняем БД данными по группе
             group_id = self.db.set_group(group_name)
-            group_data = {}
             if self.parse_type == "DEFAULT":
-                group_data = self.parse_default_col(
-                    col, ws, max_row, group_id
+                self.parse_default_col(
+                    col, ws, max_row, group_id, group_name
                 )
             elif self.parse_type == "SESSION":
                 self.parse_exam_col(
-                    col, ws, max_row, group_id, rasp_title
-                )
-            groups[group_name] = group_data
-
-        return groups
+                    col, ws, max_row, group_id, group_name, rasp_title
+                )                
+        self.db.close_conn()
 
     def get_max_row(self, ws):
         """Находим последнюю значимую строку"""
@@ -177,97 +158,76 @@ class XParser:
                 return row
         return max_row
 
-    @staticmethod
-    def get_version(title: str):
-        """получить версию расписания из главного заголовка"""
-        version_begin = title.index("версия")
-        version_str = title[version_begin:]  # версия 13 от 27.10.2024
-        VERSION_NUM_POS = 1
-        version = version_str.split(" ")[VERSION_NUM_POS]
-        return version
-
-    @staticmethod
-    def get_group_name(group_cell: str) -> str:
-        """
-        Делит ячейку группы на части:
-        1 курс\nКМБО-47-25
-        return: название группы(str)
-        """
-        _, group_name = group_cell.split("\n")
-        return group_name
-
-    def parse_default_col(self, col, ws, max_row, group_id):
+    def parse_default_col(self, col, ws, max_row, group_id, group_name):
         """Разбор колонки группы"""
-        weekday_params = {}
-
-        # TODO сюда (наверное) можно перенести просто order, weekday, teacher и room
         order = 1
         prev_weekday = "ПН"
-        prev_teacher = "null"
-        prev_room = "null"
+
         # проходимся по текущему столбцу по всем строкам
-        for row in range(self.group_row + 1, max_row):
-            weekday = ws.cell(row, self.weekday_col).value
+        row = self.group_row + 1
 
-            # если новый день недели
-            if prev_weekday != weekday and weekday:
-                prev_weekday = weekday
-                prev_teacher = "null"
-                prev_room = "null"
+        progress_bar = ShadyBar(group_name, max=max_row-row)
+        progress_bar.check_tty = False
+        progress_bar.start()
 
-            weekday = prev_weekday
-            if weekday not in weekday_params:
-                weekday_params[weekday] = []
-                print(f"{weekday}<--->", end="")
-
-            # вытаскиваем данные по учебному дню этой группы
+        while row < max_row:
+            progress_bar.next()
+            # вытаскиваем данные по текущей паре
             cur_order = ws.cell(row, self.para_col).value
             lesson_cell = ws.cell(row, col).value
             teacher = ws.cell(row, col + 1).value
             room = ws.cell(row, col + 2).value
 
+            # если пустая клетка, идем дальше
+            if lesson_cell is None:
+                row += 1
+                continue
+
+            weekday = ws.cell(row, self.weekday_col).value
+            # если новый день недели
+            if prev_weekday != weekday and weekday:
+                prev_weekday = weekday
+            weekday = prev_weekday
+
             # по цвету определяем пренадлежность к кафедре
             cur_color = ws.cell(row, col).fill.start_color.index
             department_id = self.get_dep_id(cel_color=cur_color)
 
+            # TODO если по четным неделям, то тут будет проблема с номером пары
             # если смешаная клетка
             if cur_order is not None:
                 order = cur_order
-            # prev_order, order = self.swap_with_prev_value(prev_order, order)
-            prev_teacher, teacher = self.swap_with_prev_value(prev_teacher, teacher)
-            prev_room, room = self.swap_with_prev_value(prev_room, room)
 
-            if lesson_cell:
-                if re.fullmatch(self.end_table_pattern, lesson_cell):
-                    print("END OF TABLE")
-                    break
+            lesson_parts = self.get_lesson_parts(lesson_cell)
 
-                lesson_parts = self.get_lesson_parts(lesson_cell)
-                lesson_data = self.make_lesson_dict(lesson_parts, teacher, order, room)
-                weekday_params[weekday].append(lesson_data)
+            # заполнение БД новыми данными
+            self.fill_group_day_db(
+                lesson_parts,
+                teacher,
+                order,
+                weekday,
+                group_id,
+                room,
+                department_id,
+            )
 
-                # заполнение БД новыми данными
-                self.fill_group_day_db(
-                    lesson_parts,
-                    teacher,
-                    order,
-                    weekday,
-                    group_id,
-                    room,
-                    department_id,
-                )
+            # переходим к новой паре
+            row += 1
+        progress_bar.finish()
 
-        return weekday_params
-
-    def parse_exam_col(self, col, ws, max_row, group_id, title):
+    def parse_exam_col(self, col, ws, max_row, group_id, group_name, title):
         """Разбор колонки расписания экзаменов"""
         prev_date_cell = None
         row = self.group_row + 2
 
+        progress_bar = ShadyBar(group_name, max=max_row-row)
+        progress_bar.check_tty = False
+        progress_bar.start()
+
         # проходимся по текущему столбцу по всем строкам
         prev_weekday = "ПН"
-        print("ПН<--->", sep="")
         while row < max_row:
+            progress_bar.next()
             date_cell = ws.cell(row, self.para_col).value
             # если следующий день
             prev_date_cell, date_cell = self.swap_with_prev_value(
@@ -275,7 +235,6 @@ class XParser:
             )
             exam_date, weekday = date_cell.split("\n")
             if prev_weekday != weekday:
-                print(f"{weekday}<--->", end="")
                 prev_weekday = weekday
 
             exam_type = ws.cell(row, col + 1).value
@@ -390,18 +349,7 @@ class XParser:
             # пропускаем уже разобранные ячейки экзамена
             row += 3
 
-    def make_lesson_dict(self, lesson_parts, teacher_fio, order, room) -> dict:
-        """Создает словарь по данным пары"""
-        lesson_data = {
-            "Порядок": order,
-            "Пара": lesson_parts["disc_name"],
-            "Преподаватель": teacher_fio,
-            "Подгруппа": lesson_parts["sub_group"],
-            "Недели": lesson_parts["weeks_list"],
-            "Четность": lesson_parts["parity"],
-            "Аудитория": room,
-        }
-        return lesson_data
+        progress_bar.finish()
 
     def get_lesson_parts(self, lesson_cell: str) -> dict:
         """
@@ -562,11 +510,6 @@ class XParser:
         return start_year, end_year
 
     @staticmethod
-    def get_titles(lesson_cell):
-        """Получить длинное и короткое название дисциплины"""
-        return "null", "null"
-
-    @staticmethod
     def get_order_by_time(time_start):
         """Определение номера пары по ее времени"""
         order = 1
@@ -619,16 +562,6 @@ class XParser:
         time_end = datetime.time(end_hour, end_minutes)
         return time_end
 
-    @staticmethod
-    def is_hsplitter(ws, row) -> bool:
-        """Является ли строка горизонтальным разделителем"""
-        min_col = ws.min_column
-        max_col = ws.max_column
-        for col in range(min_col, max_col):
-            if ws.cell(row, col).value is not None:
-                return False
-        return True
-
     # TODO переименовать
     def fill_group_day_db(
             self,
@@ -642,9 +575,8 @@ class XParser:
     ):
         """Заполнение таблиц по данным одного дня недели определенной группы"""
         # таблица дисциплин
-        title, _ = self.get_titles(lesson_parts["disc_name"])
         disc_id = self.db.set_disc(
-            title=title,
+            title="null",
             shorttitle=lesson_parts["disc_name"],
             department_id=department_id,
             varmask="null",
@@ -743,6 +675,35 @@ class XParser:
                 self.db.set_rasp18_rooms(rasp18_id, room)
 
     @staticmethod
+    def is_hsplitter(ws, row) -> bool:
+        """Является ли строка горизонтальным разделителем"""
+        min_col = ws.min_column
+        max_col = ws.max_column
+        for col in range(min_col, max_col):
+            if ws.cell(row, col).value is not None:
+                return False
+        return True
+
+    @staticmethod
+    def get_version(title: str):
+        """получить версию расписания из главного заголовка"""
+        version_begin = title.index("версия")
+        version_str = title[version_begin:]  # версия 13 от 27.10.2024
+        VERSION_NUM_POS = 1
+        version = version_str.split(" ")[VERSION_NUM_POS]
+        return version
+
+    @staticmethod
+    def get_group_name(group_cell: str) -> str:
+        """
+        Делит ячейку группы на части:
+        1 курс\nКМБО-47-25
+        return: название группы(str)
+        """
+        _, group_name = group_cell.split("\n")
+        return group_name
+
+    @staticmethod
     def get_worktype(disc_type: str):
         """Получить id типа дисциплины по строковому представлению:
         - 0-пр, 1-лк, 2-лб
@@ -783,13 +744,15 @@ class XParser:
 
     def get_dep_id(self, cel_color: int) -> int:
         """Получить по цвету ячейки id кафедры"""
-        department_name = "ВЕГА"
+        department_name = None
         match cel_color:
             case "FFCCFF66":
                 department_name = "только для ВЕГИ"
             case "FFFFCCFF":
                 department_name = "только для ВМ"
             case "FFFFE15A":
+                department_name = "ВМ"
+            case "FFFFF56D":
                 department_name = "ВМ"
             case "FFF1FF67":
                 department_name = "ВЕГА"
@@ -801,14 +764,30 @@ class XParser:
                 department_name = "другая"
             case "FFD1F3FF":
                 department_name = "другая"
+            case "00000000":
+                department_name = "пустая"
+
+        if department_name is None:
+            print(f"Ошибка в цвете клетки, такой еще не было: {cel_color}")
+            return -1
 
         dep_params = {"title": department_name}
         department_id = self.db.get_id("sc_department", dep_params)
         return department_id
 
+    @staticmethod
+    def swap_with_prev_value(prev_val, cur_val):
+        """Если текущее значение None, присвоить ему предыдущее, иначе сохранить в предыдущее"""
+        prev = prev_val
+        cur = cur_val
+        if not cur:
+            cur = prev
+        else:
+            prev = cur
+        return prev, cur
+
 
 if __name__ == "__main__":
     parser = XParser()
     with open("shedule.json", "w", encoding="utf-8") as file:
-        data = parser.parse()
-        # json.dump(data, file, ensure_ascii=False, indent=4)
+        parser.parse()

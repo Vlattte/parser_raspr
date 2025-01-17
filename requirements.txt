@@ -1,3 +1,4 @@
 python-dotenv
 openpyxl
 psycopg2
+progress
