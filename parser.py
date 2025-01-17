@@ -180,7 +180,7 @@ class XParser:
         # проходимся по текущему столбцу по всем строкам
         row = self.group_row + 1
 
-        progress_bar = ShadyBar(group_name, max=max_row-row)
+        progress_bar = ShadyBar(group_name, max=max_row-row, suffix='%(percent)d%%')
         progress_bar.check_tty = False
         progress_bar.start()
 
@@ -242,7 +242,7 @@ class XParser:
         prev_date_cell = None
         row = self.group_row + 2
 
-        progress_bar = ShadyBar(group_name, max=max_row-row)
+        progress_bar = ShadyBar(group_name, max=max_row-row, suffix='%(percent)d%%')
         progress_bar.check_tty = False
         progress_bar.start()
 
