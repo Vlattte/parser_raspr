@@ -67,8 +67,8 @@ class Database:
             self.cur.execute(query)
 
             # записываем историю запросов
-            with open(self.requests_file_name, "a+", encoding="utf-8") as sql_requests:
-                sql_requests.write(query)
+            if "select" not in query.lower():
+                self.sql_requests.write(query)
 
             if is_return:
                 return_data = self.cur.fetchall()

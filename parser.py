@@ -172,6 +172,13 @@ class XParser:
 
         while row < max_row:
             progress_bar.next()
+            
+            weekday = ws.cell(row, self.weekday_col).value
+            # если новый день недели
+            if prev_weekday != weekday and weekday:
+                prev_weekday = weekday
+            weekday = prev_weekday
+            
             # вытаскиваем данные по текущей паре
             cur_order = ws.cell(row, self.para_col).value
             lesson_cell = ws.cell(row, col).value
@@ -182,12 +189,6 @@ class XParser:
             if lesson_cell is None:
                 row += 1
                 continue
-
-            weekday = ws.cell(row, self.weekday_col).value
-            # если новый день недели
-            if prev_weekday != weekday and weekday:
-                prev_weekday = weekday
-            weekday = prev_weekday
 
             # по цвету определяем пренадлежность к кафедре
             cur_color = ws.cell(row, col).fill.start_color.index
@@ -226,8 +227,7 @@ class XParser:
 
         # проходимся по текущему столбцу по всем строкам
         prev_weekday = "ПН"
-        while row < max_row:
-            progress_bar.next()
+        while row < max_row:            
             date_cell = ws.cell(row, self.para_col).value
             # если следующий день
             prev_date_cell, date_cell = self.swap_with_prev_value(
@@ -250,11 +250,13 @@ class XParser:
                 # если только эта строка пустая, то это разделитель
                 is_splitter_row = self.is_hsplitter(ws, row)
                 if is_splitter_row:
+                    progress_bar.next()
                     row += 1
                     continue
 
                 # если все ячейки данных по экзамену пустые
                 if lesson_name is None and teacher is None:
+                    progress_bar.next(3)
                     row += 3
                     continue
 
@@ -347,6 +349,7 @@ class XParser:
                 self.db.set_rasp18_rooms(rasp18_id=rasp18_id, room=room)
 
             # пропускаем уже разобранные ячейки экзамена
+            progress_bar.next(3)
             row += 3
 
         progress_bar.finish()
@@ -742,6 +745,7 @@ class XParser:
         disc_id = self.db.get_id(table_name="sc_disc", params=params)
         return disc_id
 
+    # TODO переделать
     def get_dep_id(self, cel_color: int) -> int:
         """Получить по цвету ячейки id кафедры"""
         department_name = None
@@ -756,6 +760,8 @@ class XParser:
                 department_name = "ВМ"
             case "FFF1FF67":
                 department_name = "ВЕГА"
+            case "FFF4FF67":
+                department_name = "ВЕГА"
             case "FFEAFF9F":
                 department_name = "ВЕГА"
             case "FFE5FF99":
@@ -763,6 +769,8 @@ class XParser:
             case "FFB2ECFF":
                 department_name = "другая"
             case "FFD1F3FF":
+                department_name = "другая"
+            case "0":
                 department_name = "другая"
             case "00000000":
                 department_name = "пустая"
