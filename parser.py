@@ -29,22 +29,27 @@ class XParser:
     """Парсер excel расписания"""
 
     def __init__(self) -> None:
-        """
-        file - либо путь к файлу в формате str, либо байтовое представление самого файл
-        """
         self.db = db_class.Database()
 
         # тип файла для парсинга
-        self.parse_type = os.getenv("PARSE_TYPE")
-        if self.parse_type is None:
-            self.parse_type = "DEFAULT"
+        self.default_filename = os.getenv("DEFAULT_FILENAME")
+        self.session_filename = os.getenv("SESSION_FILENAME")
 
-        self.file_name = os.getenv("FILENAME")
-        if self.file_name is None:
-            raise ValueError("Не выбран файл для парсинга")
+        self.is_default = False
+        self.is_session = False
 
-        if not os.path.exists(self.file_name):
-            raise ValueError("Выбран несуществующий файл")
+        if self.default_filename is None and self.session_filename is None:
+            raise ValueError("Не выбран ни один файл для парсинга")
+
+        if self.default_filename is not None:
+            if not os.path.exists(self.default_filename):
+                raise ValueError("Выбран несуществующий файл файл расписания семестра")
+            self.is_default = True
+
+        if self.session_filename is not None:
+            if not os.path.exists(self.session_filename):
+                raise ValueError("Выбран несуществующий файл расписания сессии")
+            self.is_session = True
 
         self.group_row = 2
         self.weekday_col = 1
@@ -57,8 +62,6 @@ class XParser:
         self.subgroups = ["(1пг)", "(2пг)"]
         self.parity = ["Iн", "IIн"]
         self.week_strs = ["ВС", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"]
-
-        self.end_table_pattern = r"(\w* )?\d курс"
 
         # дата начала и конца семестра
         self.start_date = os.getenv("START_DATE")
@@ -73,45 +76,60 @@ class XParser:
         self.start_year = datetime.datetime.now().year
         self.end_year = self.start_year + 1
 
-        if self.parse_type == "SESSION":
-            self.change_to_session_params()
 
     def change_to_session_params(self):
         """Меняет некоторые стандартные параметры на параметры расписания сессии"""
         self.version_col = 2
         self.group_row = 4
 
+    def change_to_dafault_params(self):
+        """Возвращает параметры к дефолтным"""
+        # позиция ячейки с версией
+        self.version_col = 1
+        self.group_row = 2
+
     def parse(self):
-        """Парсим данные"""
+        """Парсинг исходя из параметров .env"""
         self.db.set_conn()
-        ws = openpyxl.load_workbook(filename=self.file_name, read_only=True).active
+
+        # TODO ВНИМАНИЕ, костыль, надо убрать
+        # заполняем кафедры
+        self.db.fill_departments()
+
+        # если выбрали файл расписания семетра
+        if self.is_default:
+            print("<--PARSING SEMESTR-->")
+            self.change_to_dafault_params()
+            self.parse_semestr()
+        # если выбрали файл расписания сессии
+        if self.is_session:
+            print("<--PARSING SESSION-->")
+            self.change_to_session_params()
+            self.parse_exam()
+
+        self.db.close_conn()
+
+    def parse_semestr(self):
+        """Парсинг расписания семестровых пар"""
+        self.parse_excel_file(self.default_filename)
+
+    def parse_exam(self):
+        """Парсинг расписания экзаменов"""
+        self.parse_excel_file(self.session_filename, False)
+
+    def parse_excel_file(self, file_name, default_rasp=True):
+        """Парсим данные"""
+        ws = openpyxl.load_workbook(filename=file_name, read_only=True).active
         # ------------------Определяем границы расписания------------------
         min_col = ws.min_column
         max_col = ws.max_column
         max_row = self.get_max_row(ws)
         # -----------------------------------------------------------------
+        # вытаскиваем все нужное из заголовка
+        self.fill_rasp_title_parts(max_row, ws)
 
-        # получение версии расписания
-        rasp_title = ""
-        for row in range(1, max_row):
-            rasp_title = ws.cell(row, self.version_col).value
-            if rasp_title is None or not isinstance(rasp_title, str):
-                continue
-
-            # если версия есть
-            if rasp_title.find("версия") != -1:
-                self.version = self.get_version(title=rasp_title)
-                break
-
-        # обновляем код семетра по заголовку
-        self.semcode = self.get_semcode(rasp_title)
-
-        # TODO ВНИМАНИЕ, костыль, надо убрать
-        # заполняем кафедры
-        self.db.fill_departments()
         # заполняем дни таблицы rasp18_days
         self.db.fill_rasp18_for_period(self.semcode, self.start_date, self.end_date)
-
         # ---------------Парсим расписание в цикле по группам--------------
         for col in range(min_col, max_col + 1):
             group_name = ws.cell(self.group_row, col).value
@@ -119,21 +137,14 @@ class XParser:
             if not group_name:
                 continue
 
-            # в сессии имя группы с курсом
-            if self.parse_type == "SESSION":
-                group_name = self.get_group_name(group_name)
-
-            # заполняем БД данными по группе
-            group_id = self.db.set_group(group_name)
-            if self.parse_type == "DEFAULT":
+            if default_rasp:
                 self.parse_default_col(
-                    col, ws, max_row, group_id, group_name
+                    col, ws, max_row, group_name
                 )
-            elif self.parse_type == "SESSION":
+            else:
                 self.parse_exam_col(
-                    col, ws, max_row, group_id, group_name, rasp_title
-                )                
-        self.db.close_conn()
+                    col, ws, max_row, group_name
+                )
 
     def get_max_row(self, ws):
         """Находим последнюю значимую строку"""
@@ -158,8 +169,11 @@ class XParser:
                 return row
         return max_row
 
-    def parse_default_col(self, col, ws, max_row, group_id, group_name):
+    def parse_default_col(self, col, ws, max_row, group_name):
         """Разбор колонки группы"""
+        # заполняем БД данными по группе
+        group_id = self.db.set_group(group_name)
+
         order = 1
         prev_weekday = "ПН"
 
@@ -172,13 +186,13 @@ class XParser:
 
         while row < max_row:
             progress_bar.next()
-            
+
             weekday = ws.cell(row, self.weekday_col).value
             # если новый день недели
             if prev_weekday != weekday and weekday:
                 prev_weekday = weekday
             weekday = prev_weekday
-            
+
             # вытаскиваем данные по текущей паре
             cur_order = ws.cell(row, self.para_col).value
             lesson_cell = ws.cell(row, col).value
@@ -216,8 +230,15 @@ class XParser:
             row += 1
         progress_bar.finish()
 
-    def parse_exam_col(self, col, ws, max_row, group_id, group_name, title):
+    def parse_exam_col(self, col, ws, max_row, group_name):
         """Разбор колонки расписания экзаменов"""
+        # убираем курс из названия группы
+        if self.is_session:
+            group_name = self.get_group_name(group_name)
+
+        # заполняем БД данными по группе
+        group_id = self.db.set_group(group_name)
+
         prev_date_cell = None
         row = self.group_row + 2
 
@@ -227,7 +248,7 @@ class XParser:
 
         # проходимся по текущему столбцу по всем строкам
         prev_weekday = "ПН"
-        while row < max_row:            
+        while row < max_row:
             date_cell = ws.cell(row, self.para_col).value
             # если следующий день
             prev_date_cell, date_cell = self.swap_with_prev_value(
@@ -273,12 +294,12 @@ class XParser:
             last_order = self.get_order_by_time(time_end)
 
             # Заполение таблиц
-            start_year, end_year = self.get_stud_years(title)
+
             month = int(exam_date[-2:])
             if month > 8:
-                exam_date += "." + str(start_year)
+                exam_date += "." + str(self.start_year)
             else:
-                exam_date += "." + str(end_year)
+                exam_date += "." + str(self.end_year)
 
             weekday_num = self.week_strs.index(weekday.upper())
             week = self.db.get_week_by_date(exam_date)
@@ -516,17 +537,17 @@ class XParser:
     def get_order_by_time(time_start):
         """Определение номера пары по ее времени"""
         order = 1
-        if time_start < datetime.time(10, 40):
+        if time_start < datetime.time(10, 30):
             order = 1
-        elif time_start < datetime.time(12, 40):
+        elif time_start < datetime.time(12, 10):
             order = 2
-        elif time_start < datetime.time(14, 20):
+        elif time_start < datetime.time(14, 10):
             order = 3
-        elif time_start < datetime.time(16, 20):
+        elif time_start < datetime.time(15, 50):
             order = 4
-        elif time_start < datetime.time(18, 00):
+        elif time_start < datetime.time(17, 50):
             order = 5
-        elif time_start < datetime.time(19, 40):
+        elif time_start < datetime.time(19, 30):
             order = 6
         else:
             order = 7
@@ -574,7 +595,7 @@ class XParser:
             weekday: str,
             group_id: int,
             room: str,
-            department_id: int,
+            department_id: int
     ):
         """Заполнение таблиц по данным одного дня недели определенной группы"""
         # таблица дисциплин
@@ -687,11 +708,37 @@ class XParser:
                 return False
         return True
 
+    def fill_rasp_title_parts(self, max_row: int, ws):
+        """
+            Заполнить по заголовоку расписания нужные для парсера данные:
+            учебные года, версия, время года семестра
+            
+            return start_year, end_year, version
+        """
+        rasp_title = ""
+        is_version = False
+        for row in range(1, max_row):
+            rasp_title = ws.cell(row, self.version_col).value
+            if rasp_title is None or not isinstance(rasp_title, str):
+                continue
+
+            # если версия есть
+            if rasp_title.find("версия") != -1:
+                is_version = True
+                break
+
+        if not is_version:
+            raise ValueError("Версия расписания не была найдена")
+
+        self.version = self.get_version(rasp_title)
+        self.semcode = self.get_semcode(rasp_title)
+        self.start_year, self.end_year = self.get_stud_years(rasp_title)
+
     @staticmethod
-    def get_version(title: str):
-        """получить версию расписания из главного заголовка"""
-        version_begin = title.index("версия")
-        version_str = title[version_begin:]  # версия 13 от 27.10.2024
+    def get_version(rasp_title: str):
+        """Получить версию расписания из главного заголовка"""
+        version_begin = rasp_title.index("версия")
+        version_str = rasp_title[version_begin:]  # версия 13 от 27.10.2024
         VERSION_NUM_POS = 1
         version = version_str.split(" ")[VERSION_NUM_POS]
         return version
@@ -748,7 +795,7 @@ class XParser:
     # TODO переделать
     def get_dep_id(self, cel_color: int) -> int:
         """Получить по цвету ячейки id кафедры"""
-        department_name = None
+        department_name = "другая"
         match cel_color:
             case "FFCCFF66":
                 department_name = "только для ВЕГИ"
@@ -775,10 +822,6 @@ class XParser:
             case "00000000":
                 department_name = "пустая"
 
-        if department_name is None:
-            print(f"Ошибка в цвете клетки, такой еще не было: {cel_color}")
-            return -1
-
         dep_params = {"title": department_name}
         department_id = self.db.get_id("sc_department", dep_params)
         return department_id
@@ -797,5 +840,4 @@ class XParser:
 
 if __name__ == "__main__":
     parser = XParser()
-    with open("shedule.json", "w", encoding="utf-8") as file:
-        parser.parse()
+    parser.parse()

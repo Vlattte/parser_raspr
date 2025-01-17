@@ -381,9 +381,6 @@ class Database:
         """Получить id, если запись существует"""
         query = self.get_id_request(table_name, params)
         return_id = self.send_request(query, is_return=True)
-        if return_id is None:
-            return None
-
         return return_id
 
     def get_id_request(self, table_name: str, params: dict) -> str:

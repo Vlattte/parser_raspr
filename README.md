@@ -19,17 +19,16 @@ DB_HOST='localhost'
 DB_INTERNAL_PORT='5432'
 DB_PORT='5432'
 
-FILENAME="2024autD.xlsx"
-PARSE_TYPE="DEFAULT"
+# имена файлов для парсинга расписания
+# если какого-то нет, то такое расписание не парсим
+# DEFAULT_FILENAME - расписание пар в семестре
+# SESSION_FILENAME - расписание пар в сессию
+DEFAULT_FILENAME="2024autD.xlsx"
+SESSION_FILENAME="zex202425win4.xlsx"
 
 START_DATE="2024-09-02"
 END_DATE="2025-02-02"
 ```
-
-Также нужно добавить переменную "FILENAME", в которой указать имя файла скачанного расписания
-И переменную "PARSE_TYPE", в которой указывается тип файла, который парсится:
-    либо "DEFAULT" (пары в семестре), либо "SESSION" - расписание сессии
-
 
 #### Создание таблиц
 
