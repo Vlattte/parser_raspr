@@ -2,18 +2,16 @@
 
 import os
 import re
-import json
 import copy
 import datetime
-import openpyxl
+from openpyxl import load_workbook
 import openpyxl.styles.colors
 from progress.bar import ShadyBar
 
-import db_class
+from db_class import Database
 
 from dotenv import load_dotenv
 
-load_dotenv()
 
 WEEKS = 17
 AUTUMN_SUBSTR = "осен"
@@ -22,17 +20,18 @@ WINTER_SUBSTR = "зимн"
 SUMMER_SUBSTR = "летн"
 
 
-# TODO распараллелить, а то ОЧЕНЬ долго
-# TODO если идет пустая пара, а затем пара с пустым преподом, то в путого препода пишется prev_teacher
+# TODO распараллелить
 
-class XParser:
+class VegaRaspParser:
     """Парсер excel расписания"""
 
     def __init__(self) -> None:
-        self.db = db_class.Database()
+        self.db = Database()
 
         # тип файла для парсинга
+        load_dotenv()
         self.default_filename = os.getenv("DEFAULT_FILENAME")
+        print(self.default_filename)
         self.session_filename = os.getenv("SESSION_FILENAME")
 
         self.is_default = False
@@ -43,12 +42,14 @@ class XParser:
 
         if self.default_filename is not None:
             if not os.path.exists(self.default_filename):
-                raise ValueError("Выбран несуществующий файл файл расписания семестра")
+                raise ValueError(
+                    "Выбран несуществующий файл файл расписания семестра")
             self.is_default = True
 
         if self.session_filename is not None:
             if not os.path.exists(self.session_filename):
-                raise ValueError("Выбран несуществующий файл расписания сессии")
+                raise ValueError(
+                    "Выбран несуществующий файл расписания сессии")
             self.is_session = True
 
         self.group_row = 2
@@ -75,7 +76,6 @@ class XParser:
         # Год начала и конца обучения
         self.start_year = datetime.datetime.now().year
         self.end_year = self.start_year + 1
-
 
     def change_to_session_params(self):
         """Меняет некоторые стандартные параметры на параметры расписания сессии"""
@@ -119,7 +119,7 @@ class XParser:
 
     def parse_excel_file(self, file_name, default_rasp=True):
         """Парсим данные"""
-        ws = openpyxl.load_workbook(filename=file_name, read_only=True).active
+        ws = load_workbook(filename=file_name, read_only=True).active
         # ------------------Определяем границы расписания------------------
         min_col = ws.min_column
         max_col = ws.max_column
@@ -129,7 +129,8 @@ class XParser:
         self.fill_rasp_title_parts(max_row, ws)
 
         # заполняем дни таблицы rasp18_days
-        self.db.fill_rasp18_for_period(self.semcode, self.start_date, self.end_date)
+        self.db.fill_rasp18_for_period(
+            self.semcode, self.start_date, self.end_date)
         # ---------------Парсим расписание в цикле по группам--------------
         for col in range(min_col, max_col + 1):
             group_name = ws.cell(self.group_row, col).value
@@ -180,7 +181,8 @@ class XParser:
         # проходимся по текущему столбцу по всем строкам
         row = self.group_row + 1
 
-        progress_bar = ShadyBar(group_name, max=max_row-row, suffix='%(percent)d%%')
+        progress_bar = ShadyBar(
+            group_name, max=max_row-row, suffix='%(percent)d%%')
         progress_bar.check_tty = False
         progress_bar.start()
 
@@ -242,7 +244,8 @@ class XParser:
         prev_date_cell = None
         row = self.group_row + 2
 
-        progress_bar = ShadyBar(group_name, max=max_row-row, suffix='%(percent)d%%')
+        progress_bar = ShadyBar(
+            group_name, max=max_row-row, suffix='%(percent)d%%')
         progress_bar.check_tty = False
         progress_bar.start()
 
@@ -401,7 +404,8 @@ class XParser:
         lesson_parts["worktype"] = worktype
 
         # удаляем лишнее и получаем название дисциплины
-        lesson_parts["disc_name"] = self.get_disc_name(lesson_cell, lesson_parts)
+        lesson_parts["disc_name"] = self.get_disc_name(
+            lesson_cell, lesson_parts)
 
         return lesson_parts
 
@@ -417,7 +421,8 @@ class XParser:
         all_weeks = list(range(1, WEEKS))
         weeks_text = ", ".join(map(str, all_weeks))
 
-        weeks_parts = {"parity": 0, "weeks_list": all_weeks, "weeks_text": weeks_text}
+        weeks_parts = {"parity": 0, "weeks_list": all_weeks,
+                       "weeks_text": weeks_text}
 
         parity = self.get_week_parity(lesson)
         weeks_parts["parity"] = parity
@@ -662,7 +667,8 @@ class XParser:
     ):
         """Заполнение rasp18 для дисциплины на до конца семестра"""
         day_order = (self.week_strs.index(weekday) - 1) % 7
-        first_day = datetime.datetime.strptime(self.start_date, "%Y-%m-%d").date()
+        first_day = datetime.datetime.strptime(
+            self.start_date, "%Y-%m-%d").date()
         weekday_delta = abs(day_order - first_day.weekday())
 
         weekday_num = self.week_strs.index(weekday)
@@ -712,7 +718,7 @@ class XParser:
         """
             Заполнить по заголовоку расписания нужные для парсера данные:
             учебные года, версия, время года семестра
-            
+
             return start_year, end_year, version
         """
         rasp_title = ""
@@ -839,5 +845,5 @@ class XParser:
 
 
 if __name__ == "__main__":
-    parser = XParser()
+    parser = VegaRaspParser()
     parser.parse()

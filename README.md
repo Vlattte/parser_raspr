@@ -16,7 +16,6 @@ DB_USER='postgres'
 DB_NAME='postgres'
 DB_PASSWORD='postgres'
 DB_HOST='localhost'
-DB_INTERNAL_PORT='5432'
 DB_PORT='5432'
 
 # имена файлов для парсинга расписания
@@ -34,14 +33,14 @@ END_DATE="2025-02-02"
 
 psql -U postgres -d postgres -a -f [путь_до_файла_rasp.sql]
 
+
 #### Установка зависимостей:
 
 pip install -r requirements.txt
 
-
 ## Запуск
 
-python parser.py
+python run_parser.py
 
 ## Дополнительные сведения
 

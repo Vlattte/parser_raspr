@@ -5,7 +5,6 @@
 import os
 import psycopg2
 from psycopg2._psycopg import cursor, connection
-# import sqlite3
 from dotenv import load_dotenv
 import datetime
 from progress.counter import Stack
@@ -35,7 +34,8 @@ class Database:
     def set_conn(self):
         """Установка соединения"""
         try:
-            self.sql_requests = open(self.requests_file_name, "w", encoding="utf-8")
+            self.sql_requests = open(
+                self.requests_file_name, "w", encoding="utf-8")
             # self.conn = sqlite3.connect('file:cachedb?mode=memory&cache=shared')
             self.conn = psycopg2.connect(
                 database=self.db_name,
@@ -226,7 +226,8 @@ class Database:
     def fill_rasp18_for_period(self, semcode: int, start_date: str, end_date: str):
         """Заполнение дней с start_date до end_date"""
 
-        duration = datetime.datetime.strptime(end_date, "%Y-%m-%d") - datetime.datetime.strptime(start_date, "%Y-%m-%d")
+        duration = datetime.datetime.strptime(
+            end_date, "%Y-%m-%d") - datetime.datetime.strptime(start_date, "%Y-%m-%d")
         fill_days_bar = Stack('Заполнение rasp18_days', max=duration.days)
         fill_days_bar.check_tty = False
         fill_days_bar.start()
@@ -236,8 +237,8 @@ class Database:
         while str(date) != end_date:
             cur_weekday = (date.weekday()+1) % 7
             self.set_rasp18_days(
-                    semcode=semcode, day=str(date), weekday=cur_weekday, week=cur_week
-                )
+                semcode=semcode, day=str(date), weekday=cur_weekday, week=cur_week
+            )
             date += datetime.timedelta(days=1)
             if date.weekday() == 0:  # если новый понедельник
                 cur_week += 1
@@ -249,7 +250,8 @@ class Database:
         table_name = "sc_rasp18_days"
 
         # если такой день уже есть, то добавляет его не нужно
-        params = {"semcode" :semcode, "day": day, "weekday": weekday, "week": week}
+        params = {"semcode": semcode, "day": day,
+                  "weekday": weekday, "week": week}
         day_id = self.get_id(table_name, params)
         if day_id is not None:
             return day_id
