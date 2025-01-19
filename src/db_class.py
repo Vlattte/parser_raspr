@@ -9,34 +9,45 @@ from dotenv import load_dotenv
 import datetime
 from progress.counter import Stack
 
-load_dotenv()
-
 
 class Database:
-    def __init__(self) -> None:
-        """
-        Инициализирует БД.
-        НЕ МЕНЯЙТЕ НАЗВАНИЕ СХЕМЫ public на другое!!!
-        """
+    def __init__(self, is_dump=True) -> None:
+        """Инициализирует БД"""
         super().__init__()
+
+        load_dotenv()
         self.db_host = "localhost"
         self.db_name = os.getenv("DB_NAME")
         self.db_user = os.getenv("DB_USER")
         self.db_password = os.getenv("DB_PASSWORD")
         self.db_port = os.getenv("DB_PORT")
+        self.is_dump = os.getenv("DB_DUMP")
+        self.is_pre_clear = os.getenv("PRE_CLEAR")
 
-        self.requests_file_name = "sql_requests.sql"
+        # если не заполнили
+        if self.is_dump is None:
+            self.is_dump = is_dump
+        else:
+            self.is_dump = bool(self.is_dump)
+
+        self.requests_file_name = "sql_scripts/sql_dump.sql"
 
         self.conn = None
         self.cur = None
         self.sql_requests = None
+        
+        # очищать ли базу перед работой
+        if int(self.is_pre_clear) == 1:
+            self.set_conn()
+            self.__clear_tables()
+            self.close_conn()
 
     def set_conn(self):
         """Установка соединения"""
         try:
             self.sql_requests = open(
                 self.requests_file_name, "w", encoding="utf-8")
-            # self.conn = sqlite3.connect('file:cachedb?mode=memory&cache=shared')
+
             self.conn = psycopg2.connect(
                 database=self.db_name,
                 user=self.db_user,
@@ -47,8 +58,9 @@ class Database:
             # TODO multidict
             self.cur = self.conn.cursor()
         except psycopg2.Error as error:
-            print("connection error occured", error)
-            self.conn, self.cur = (None, None)
+            print("Set connection error occured", error)
+            self.conn = None
+            self.cur = None
 
     def close_conn(self):
         """Закрыть соединение с базой"""
@@ -67,7 +79,7 @@ class Database:
             self.cur.execute(query)
 
             # записываем историю запросов
-            if "select" not in query.lower():
+            if "select" not in query.lower() and self.is_dump:
                 self.sql_requests.write(query)
 
             if is_return:
@@ -82,6 +94,13 @@ class Database:
         finally:
             if self.conn:
                 self.conn.commit()
+
+    def __clear_tables(self):
+        """ОЧИЩАЕТ ВСЕ ТАБЛИЦЫ"""
+        with open("sql_scripts/clear_script.sql", "r", encoding="utf-8") as clear_script:
+            query = clear_script.read()
+            query = query.replace("\n", "")
+            self.send_request(query)
 
     def set_prep(
         self, fio: str, chair: str = None, degree: str = None, photo: str = None
@@ -420,4 +439,28 @@ class Database:
                  INSERT INTO sc_department (id, title) VALUES(3, 'только для ВЕГИ') ON CONFLICT DO NOTHING;\
                  INSERT INTO sc_department (id, title) VALUES(4, 'только для ВМ') ON CONFLICT DO NOTHING;\
                  INSERT INTO sc_department (id, title) VALUES(5, 'другая') ON CONFLICT DO NOTHING;"
+        self.send_request(query)
+
+    def fill_worktypes(self):
+        """Заполняет таблицу типов пар"""
+        # - 0-пр, 1-лк, 2-лб
+        # - 10-конс, 11-экз, 12-зaч, 13-зaч-д
+        # - 14-кр, 15-кп
+        worktypes = {"пр": 0, "лк": 1, "лб": 2,
+                     "конс": 10, "экз": 11, "зач": 12, "зач-д": 13,
+                     "кр": 14, "кп": 15}
+        table_name = "sc_worktypes"
+
+        # проверка на наличие такой таблицы
+        create_query = f"CREATE TABLE IF NOT EXISTS public.{
+            table_name} (id SERIAL PRIMARY KEY, title text);"
+        self.send_request(create_query)
+
+        query = ""
+        for wt_name, wt_id in worktypes.items():
+            already_exists = self.row_exists(
+                table_name, {"id": wt_id, "title": wt_name})
+            if not already_exists:
+                query += f"INSERT INTO {table_name} (id, title) VALUES({wt_id},\
+                        '{wt_name}') ON CONFLICT DO NOTHING;"
         self.send_request(query)

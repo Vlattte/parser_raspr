@@ -16,17 +16,26 @@ DB_USER='postgres'
 DB_NAME='postgres'
 DB_PASSWORD='postgres'
 DB_HOST='localhost'
+DB_INTERNAL_PORT='5432'
 DB_PORT='5432'
+
+# делать дамп - 1, другие значения, либо отсутствие параметра
+# не делать дамп
+DB_DUMP=1
 
 # имена файлов для парсинга расписания
 # если какого-то нет, то такое расписание не парсим
 # DEFAULT_FILENAME - расписание пар в семестре
 # SESSION_FILENAME - расписание пар в сессию
-DEFAULT_FILENAME="2024autD.xlsx"
-SESSION_FILENAME="zex202425win4.xlsx"
+DEFAULT_FILENAME="test_rasp_files/2024autD.xlsx"
+SESSION_FILENAME="test_rasp_files/zex202425win4.xlsx"
 
 START_DATE="2024-09-02"
 END_DATE="2025-02-02"
+
+# делать очистку таблиц - 1, другие значения, либо отсутствие параметра
+# не делать
+PRE_CLEAR=1
 ```
 
 #### Создание таблиц

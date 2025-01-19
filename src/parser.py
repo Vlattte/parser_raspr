@@ -1,17 +1,25 @@
 """Парсер расписания с сайта vega.mirea.ru"""
 
-import os
-import re
-import copy
-import datetime
+# std
+from os import getenv
+from os import path
+
+from re import fullmatch
+from re import search
+from copy import deepcopy
+# datetime
+from datetime import datetime
+from datetime import time
+from datetime import timedelta
+
+# usefull
 from openpyxl import load_workbook
-import openpyxl.styles.colors
-from progress.bar import ShadyBar
-
-from db_class import Database
-
+from progress.bar import PixelBar
 from dotenv import load_dotenv
 
+# custom
+import src.utils as utils
+from src.db_class import Database
 
 WEEKS = 17
 AUTUMN_SUBSTR = "осен"
@@ -21,18 +29,20 @@ SUMMER_SUBSTR = "летн"
 
 
 # TODO распараллелить
+# TODO прогресс бар как декоратор
+# TODO разобраться с цветами ячеек
+# TODO брать расписание с сайта ВЕГИ
+# TODO загружать расписание с сайта ВЕГИ
 
 class VegaRaspParser:
     """Парсер excel расписания"""
 
     def __init__(self) -> None:
         self.db = Database()
-
         # тип файла для парсинга
         load_dotenv()
-        self.default_filename = os.getenv("DEFAULT_FILENAME")
-        print(self.default_filename)
-        self.session_filename = os.getenv("SESSION_FILENAME")
+        self.default_filename = getenv("DEFAULT_FILENAME")
+        self.session_filename = getenv("SESSION_FILENAME")
 
         self.is_default = False
         self.is_session = False
@@ -41,13 +51,13 @@ class VegaRaspParser:
             raise ValueError("Не выбран ни один файл для парсинга")
 
         if self.default_filename is not None:
-            if not os.path.exists(self.default_filename):
+            if not path.exists(self.default_filename):
                 raise ValueError(
                     "Выбран несуществующий файл файл расписания семестра")
             self.is_default = True
 
         if self.session_filename is not None:
-            if not os.path.exists(self.session_filename):
+            if not path.exists(self.session_filename):
                 raise ValueError(
                     "Выбран несуществующий файл расписания сессии")
             self.is_session = True
@@ -65,8 +75,8 @@ class VegaRaspParser:
         self.week_strs = ["ВС", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"]
 
         # дата начала и конца семестра
-        self.start_date = os.getenv("START_DATE")
-        self.end_date = os.getenv("END_DATE")
+        self.start_date = getenv("START_DATE")
+        self.end_date = getenv("END_DATE")
         if self.start_date is None or self.end_date is None:
             raise ValueError("Добавьте даты начала и конца семестра")
 
@@ -74,7 +84,7 @@ class VegaRaspParser:
         self.semcode = 0
 
         # Год начала и конца обучения
-        self.start_year = datetime.datetime.now().year
+        self.start_year = datetime.now().year
         self.end_year = self.start_year + 1
 
     def change_to_session_params(self):
@@ -92,20 +102,23 @@ class VegaRaspParser:
         """Парсинг исходя из параметров .env"""
         self.db.set_conn()
 
-        # TODO ВНИМАНИЕ, костыль, надо убрать
         # заполняем кафедры
         self.db.fill_departments()
+        # заполняем типы пар
+        self.db.fill_worktypes()
 
         # если выбрали файл расписания семетра
         if self.is_default:
             print("<--PARSING SEMESTR-->")
             self.change_to_dafault_params()
             self.parse_semestr()
+            print("<--RASP PARSED-->")
         # если выбрали файл расписания сессии
         if self.is_session:
             print("<--PARSING SESSION-->")
             self.change_to_session_params()
             self.parse_exam()
+            print("<--SESSION PARSED-->")
 
         self.db.close_conn()
 
@@ -149,6 +162,8 @@ class VegaRaspParser:
 
     def get_max_row(self, ws):
         """Находим последнюю значимую строку"""
+        start_time = datetime.now()
+
         max_row = ws.max_row
         max_col = ws.max_column
         legend_pattern = r"(\w)*егенд[\w\s]*"
@@ -159,15 +174,19 @@ class VegaRaspParser:
                 if cur_cell is None:
                     continue
                 # если нашли строку со словом "легенда", то далее ищем первую значимую строку
-                if re.fullmatch(legend_pattern, ws.cell(row, col).value):
+                if fullmatch(legend_pattern, ws.cell(row, col).value):
                     max_row = row
                     break
             if max_row != ws.max_row:
                 break
 
         for row in range(max_row - 1, 1, -1):
-            if not self.is_hsplitter(ws, row):
+            if not utils.is_hsplitter(ws, row):
+                end_time = datetime.now()
+                print(f"Max row found after {end_time-start_time}")
                 return row
+        end_time = datetime.now()
+        print(f"Max row found after {end_time-start_time}")
         return max_row
 
     def parse_default_col(self, col, ws, max_row, group_name):
@@ -181,7 +200,7 @@ class VegaRaspParser:
         # проходимся по текущему столбцу по всем строкам
         row = self.group_row + 1
 
-        progress_bar = ShadyBar(
+        progress_bar = PixelBar(
             group_name, max=max_row-row, suffix='%(percent)d%%')
         progress_bar.check_tty = False
         progress_bar.start()
@@ -207,7 +226,8 @@ class VegaRaspParser:
                 continue
 
             # по цвету определяем пренадлежность к кафедре
-            cur_color = ws.cell(row, col).fill.start_color.index
+            start_color = ws.cell(row, col).fill.start_color
+            cur_color = ws.cell(row, col).fill.start_color.rgb
             department_id = self.get_dep_id(cel_color=cur_color)
 
             # TODO если по четным неделям, то тут будет проблема с номером пары
@@ -232,11 +252,12 @@ class VegaRaspParser:
             row += 1
         progress_bar.finish()
 
-    def parse_exam_col(self, col, ws, max_row, group_name):
+    def parse_exam_col(self, col, ws, max_row, group_cell):
         """Разбор колонки расписания экзаменов"""
         # убираем курс из названия группы
-        if self.is_session:
-            group_name = self.get_group_name(group_name)
+
+        # Делит ячейку группы на части: 1 курс\nКМБО-47-25
+        _, group_name = group_cell.split("\n")
 
         # заполняем БД данными по группе
         group_id = self.db.set_group(group_name)
@@ -244,7 +265,7 @@ class VegaRaspParser:
         prev_date_cell = None
         row = self.group_row + 2
 
-        progress_bar = ShadyBar(
+        progress_bar = PixelBar(
             group_name, max=max_row-row, suffix='%(percent)d%%')
         progress_bar.check_tty = False
         progress_bar.start()
@@ -254,7 +275,7 @@ class VegaRaspParser:
         while row < max_row:
             date_cell = ws.cell(row, self.para_col).value
             # если следующий день
-            prev_date_cell, date_cell = self.swap_with_prev_value(
+            prev_date_cell, date_cell = utils.swap_with_prev_value(
                 prev_date_cell, date_cell
             )
             exam_date, weekday = date_cell.split("\n")
@@ -272,7 +293,7 @@ class VegaRaspParser:
 
             if time_start is None:
                 # если только эта строка пустая, то это разделитель
-                is_splitter_row = self.is_hsplitter(ws, row)
+                is_splitter_row = utils.is_hsplitter(ws, row)
                 if is_splitter_row:
                     progress_bar.next()
                     row += 1
@@ -286,18 +307,17 @@ class VegaRaspParser:
 
                 # если предмет не пустой, то ставим на 4 пары
                 if teacher is None:
-                    time_start = datetime.time(hour=9, minute=0)
-                    time_end = datetime.time(hour=15, minute=50)
+                    time_start = time(hour=9, minute=0)
+                    time_end = time(hour=15, minute=50)
 
             # ставим длительность экзамена 1.5 часа (2 академ часа)
             else:
-                time_end = self.time_in_90_minutes(time_start)
+                time_end = utils.time_in_90_minutes(time_start)
 
-            cur_order = self.get_order_by_time(time_start)
-            last_order = self.get_order_by_time(time_end)
+            cur_order = utils.get_order_by_time(time_start)
+            last_order = utils.get_order_by_time(time_end)
 
             # Заполение таблиц
-
             month = int(exam_date[-2:])
             if month > 8:
                 exam_date += "." + str(self.start_year)
@@ -306,7 +326,7 @@ class VegaRaspParser:
 
             weekday_num = self.week_strs.index(weekday.upper())
             week = self.db.get_week_by_date(exam_date)
-            worktype = self.get_worktype(exam_type)
+            worktype = utils.get_worktype(exam_type)
             disc_id = self.get_disc_id(lesson_name)
 
             # если перепутали название дисциплины, добавим такую
@@ -342,6 +362,7 @@ class VegaRaspParser:
             )
             # set_rasp18_preps
             if teacher is not None:
+
                 # TODO добавить, когда можно будет делить преподов ведущих одну пару
                 # teacher = teacher.replace(", ", ",")
                 # if teacher.find("\n") != -1 or teacher.find(",\n") != -1:
@@ -360,13 +381,13 @@ class VegaRaspParser:
                 #         self.db.set_rasp18_preps(
                 #             rasp18_id=rasp18_id, prep_id=prep_id)
                 # else:
+
                 params = {"fio": teacher}
                 prep_id = self.db.get_id(table_name="sc_prep", params=params)
                 # если перепутали имя препода, добавим такую
                 if prep_id is None:
-                    prep_id = self.db.set_prep(
-                        fio=teacher, chair="null", degree="null", photo="null"
-                    )
+                    prep_id = self.db.set_prep(fio=teacher)
+
                 self.db.set_rasp18_preps(rasp18_id=rasp18_id, prep_id=prep_id)
             # set_rasp18_rooms
             if room is not None:
@@ -393,8 +414,8 @@ class VegaRaspParser:
         }
 
         # получаем тип пары (лк, пр, лб)
-        lesson_type = self.get_lesson_type(lesson_cell)
-        worktype = self.get_worktype(lesson_type)
+        lesson_type = utils.get_lesson_type(lesson_cell)
+        worktype = utils.get_worktype(lesson_type)
         # получаем подгруппу
         # получаем данные по неделям
         weeks_parts = self.get_weeks_parts(lesson_cell)
@@ -433,7 +454,7 @@ class VegaRaspParser:
             return weeks_parts
 
         pattern = r"\d+(,(\s)?\d+)*н"
-        substring = re.search(pattern, lesson)
+        substring = search(pattern, lesson)
         if substring is not None:
             # проверяем наличие недельного распределения
             weeks_parts["weeks_text"] = substring.group()
@@ -451,27 +472,9 @@ class VegaRaspParser:
                 return self.parity.index(i) + 1
         return 0
 
-    @staticmethod
-    def get_lesson_type(lesson: str) -> str:
-        """Вытащить тип пары (лк, пр, лб)"""
-        lesson_type = "пр"
-        lesson_copy = copy.deepcopy(lesson)
-
-        # чтобы избежать опечаток с пробелами, добавляем после всех точек пробел
-        # Лин. алг.и ан. геом. -> Лин.алг.и ан.геом.
-        lesson_copy = lesson_copy.replace(". ", ".")
-        # Лин.алг.и ан.геом.   -> Лин. алг. и ан. геом.
-        lesson_copy = lesson_copy.replace(".", ". ")
-
-        if re.search(r"лк", lesson) is not None:
-            lesson_type = "лк"
-        if re.search(r"лб", lesson) is not None:
-            lesson_type = "лб"
-        return lesson_type
-
     def get_disc_name(self, lesson: str, lesson_parts: dict) -> str:
         """Убрать лишнее из названия дисциплины и вернуть только само название"""
-        disc_name = copy.deepcopy(lesson)
+        disc_name = deepcopy(lesson)
 
         # убираем недели
         if lesson_parts["parity"] == 0 and len(lesson_parts["weeks_list"]) < 16:
@@ -505,11 +508,10 @@ class VegaRaspParser:
     def get_semcode(self, title: str) -> int:
         """Получение кода семестра по заголовку"""
         # парсим заголовок и получаем код семестра:
-        # если осень - 00, весная - 01
+        # осень - 00, весна - 01
 
         # год в формате 2425, где 2024 - год начала учебного года, 2025 - год конца
-        start_year, end_year = self.get_stud_years(title=title)
-        year_code = str(start_year)[-2:] + str(end_year)[-2:]
+        year_code = str(self.start_year)[-2:] + str(self.end_year)[-2:]
 
         semcode = "00"
         low_title = title.lower()
@@ -521,75 +523,6 @@ class VegaRaspParser:
         semcode = str(year_code) + semcode
 
         return int(semcode)
-
-    @staticmethod
-    def get_stud_years(title: str):
-        """Получить год начала и конца учебного года"""
-        today = datetime.datetime.now()
-        start_year = today.year
-        end_year = start_year + 1
-
-        year_pattern = r"20\d\d/\d\d"
-        stud_years = re.search(year_pattern, title)
-
-        if stud_years is not None:
-            years_str = stud_years.group()
-            start_year = years_str[:4]
-            end_year = "20" + years_str[5:]
-        return start_year, end_year
-
-    @staticmethod
-    def get_order_by_time(time_start):
-        """Определение номера пары по ее времени"""
-        order = 1
-        if time_start < datetime.time(10, 30):
-            order = 1
-        elif time_start < datetime.time(12, 10):
-            order = 2
-        elif time_start < datetime.time(14, 10):
-            order = 3
-        elif time_start < datetime.time(15, 50):
-            order = 4
-        elif time_start < datetime.time(17, 50):
-            order = 5
-        elif time_start < datetime.time(19, 30):
-            order = 6
-        else:
-            order = 7
-        return order
-
-    @staticmethod
-    def get_time_by_order(order):
-        """Получить время начала пары"""
-        time_start = "null"
-        match order:
-            case 1:
-                time_start = datetime.time(9, 00)
-            case 2:
-                time_start = datetime.time(10, 40)
-            case 3:
-                time_start = datetime.time(12, 40)
-            case 4:
-                time_start = datetime.time(14, 20)
-            case 5:
-                time_start = datetime.time(16, 20)
-            case 6:
-                time_start = datetime.time(18, 00)
-            case 7:
-                time_start = datetime.time(19, 40)
-        return time_start
-
-    @staticmethod
-    def time_in_90_minutes(time_start):
-        """Получить время через 1.5 часа"""
-        end_minutes = (time_start.minute + 30) % 60
-        end_hour = time_start.hour + 1
-
-        # если перешли в следующий час
-        if end_minutes < 30:
-            end_hour += 1
-        time_end = datetime.time(end_hour, end_minutes)
-        return time_end
 
     # TODO переименовать
     def fill_group_day_db(
@@ -667,7 +600,7 @@ class VegaRaspParser:
     ):
         """Заполнение rasp18 для дисциплины на до конца семестра"""
         day_order = (self.week_strs.index(weekday) - 1) % 7
-        first_day = datetime.datetime.strptime(
+        first_day = datetime.strptime(
             self.start_date, "%Y-%m-%d").date()
         weekday_delta = abs(day_order - first_day.weekday())
 
@@ -677,15 +610,15 @@ class VegaRaspParser:
         for week in weeksarray:
             # считаем дату пары
             cur_delta = weekday_delta + (week - 1) * 7
-            cur_date = first_day + datetime.timedelta(days=cur_delta)
+            cur_date = first_day + timedelta(days=cur_delta)
             params["week"] = week
             params["day"] = str(cur_date)
 
             # смотрим id дня
             day_id = self.db.get_id(table_name="sc_rasp18_days", params=params)
             # время пары
-            time_start = self.get_time_by_order(order)
-            time_end = self.time_in_90_minutes(time_start)
+            time_start = utils.get_time_by_order(order)
+            time_end = utils.time_in_90_minutes(time_start)
 
             rasp18_id = self.db.set_rasp18(
                 semcode=self.semcode,
@@ -703,16 +636,6 @@ class VegaRaspParser:
                 self.db.set_rasp18_preps(rasp18_id, prep_id)
             if room is not None:
                 self.db.set_rasp18_rooms(rasp18_id, room)
-
-    @staticmethod
-    def is_hsplitter(ws, row) -> bool:
-        """Является ли строка горизонтальным разделителем"""
-        min_col = ws.min_column
-        max_col = ws.max_column
-        for col in range(min_col, max_col):
-            if ws.cell(row, col).value is not None:
-                return False
-        return True
 
     def fill_rasp_title_parts(self, max_row: int, ws):
         """
@@ -736,61 +659,9 @@ class VegaRaspParser:
         if not is_version:
             raise ValueError("Версия расписания не была найдена")
 
-        self.version = self.get_version(rasp_title)
+        self.version = utils.get_version(rasp_title)
         self.semcode = self.get_semcode(rasp_title)
-        self.start_year, self.end_year = self.get_stud_years(rasp_title)
-
-    @staticmethod
-    def get_version(rasp_title: str):
-        """Получить версию расписания из главного заголовка"""
-        version_begin = rasp_title.index("версия")
-        version_str = rasp_title[version_begin:]  # версия 13 от 27.10.2024
-        VERSION_NUM_POS = 1
-        version = version_str.split(" ")[VERSION_NUM_POS]
-        return version
-
-    @staticmethod
-    def get_group_name(group_cell: str) -> str:
-        """
-        Делит ячейку группы на части:
-        1 курс\nКМБО-47-25
-        return: название группы(str)
-        """
-        _, group_name = group_cell.split("\n")
-        return group_name
-
-    @staticmethod
-    def get_worktype(disc_type: str):
-        """Получить id типа дисциплины по строковому представлению:
-        - 0-пр, 1-лк, 2-лб
-        - 10-конс, 11-экз, 12-зaч, 13-зaч-д
-        - 14-кр, 15-кп
-        """
-        # изначально без типа пары
-        worktype_id = -1
-        match disc_type:
-            # просто пары
-            case "пр":
-                worktype_id = 0
-            case "лк":
-                worktype_id = 1
-            case "лб":
-                worktype_id = 2
-            # экзамены
-            case "конс.":
-                worktype_id = 10
-            case "экзамен":
-                worktype_id = 11
-            case "зачет":
-                worktype_id = 12
-            case "зачет-д":
-                worktype_id = 13
-            # сдача работ
-            case "к/р":
-                worktype_id = 14
-            case "к/п":
-                worktype_id = 15
-        return worktype_id
+        self.start_year, self.end_year = utils.get_stud_years(rasp_title)
 
     def get_disc_id(self, lesson_name: str) -> int:
         """Получить id дисциплины по названию"""
@@ -798,31 +669,36 @@ class VegaRaspParser:
         disc_id = self.db.get_id(table_name="sc_disc", params=params)
         return disc_id
 
-    # TODO переделать
     def get_dep_id(self, cel_color: int) -> int:
         """Получить по цвету ячейки id кафедры"""
         department_name = "другая"
         match cel_color:
+            # зеленый
             case "FFCCFF66":
                 department_name = "только для ВЕГИ"
+            # розовый
             case "FFFFCCFF":
                 department_name = "только для ВМ"
+            # темно желтый
             case "FFFFE15A":
                 department_name = "ВМ"
             case "FFFFF56D":
                 department_name = "ВМ"
-            case "FFF1FF67":
+            # желтый/бледно желтый
+            case "FFF1FF67":  # желтый
                 department_name = "ВЕГА"
-            case "FFF4FF67":
+            case "FFF4FF67":  # 
                 department_name = "ВЕГА"
-            case "FFEAFF9F":
+            case "FFEAFF9F":  #
                 department_name = "ВЕГА"
-            case "FFE5FF99":
+            case "FFE5FF99":  #
                 department_name = "ВЕГА"
+            # голубой цвет
             case "FFB2ECFF":
                 department_name = "другая"
             case "FFD1F3FF":
                 department_name = "другая"
+            # белый/без заливки
             case "0":
                 department_name = "другая"
             case "00000000":
@@ -831,17 +707,6 @@ class VegaRaspParser:
         dep_params = {"title": department_name}
         department_id = self.db.get_id("sc_department", dep_params)
         return department_id
-
-    @staticmethod
-    def swap_with_prev_value(prev_val, cur_val):
-        """Если текущее значение None, присвоить ему предыдущее, иначе сохранить в предыдущее"""
-        prev = prev_val
-        cur = cur_val
-        if not cur:
-            cur = prev
-        else:
-            prev = cur
-        return prev, cur
 
 
 if __name__ == "__main__":

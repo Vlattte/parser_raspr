@@ -18,6 +18,10 @@ delete FROM
     sc_group;
 delete FROM
     sc_prep;
+
+delete FROM
+    sc_worktypes;
+
 delete FROM
     sc_rasp7;
 delete FROM
