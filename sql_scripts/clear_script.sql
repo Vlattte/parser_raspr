@@ -20,9 +20,6 @@ delete FROM
     sc_prep;
 
 delete FROM
-    sc_worktypes;
-
-delete FROM
     sc_rasp7;
 delete FROM
     sc_rasp7_preps;    

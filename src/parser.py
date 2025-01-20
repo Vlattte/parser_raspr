@@ -14,6 +14,7 @@ from datetime import timedelta
 
 # usefull
 from openpyxl import load_workbook
+from openpyxl.worksheet.merge import MergedCellRange
 from progress.bar import PixelBar
 from dotenv import load_dotenv
 
@@ -53,13 +54,13 @@ class VegaRaspParser:
         if self.default_filename is not None:
             if not path.exists(self.default_filename):
                 raise ValueError(
-                    "Выбран несуществующий файл файл расписания семестра")
+                    f"Выбран несуществующий файл файл расписания семестра: {self.default_filename}")
             self.is_default = True
 
         if self.session_filename is not None:
             if not path.exists(self.session_filename):
                 raise ValueError(
-                    "Выбран несуществующий файл расписания сессии")
+                    f"Выбран несуществующий файл расписания сессии: {self.session_filename}")
             self.is_session = True
 
         self.group_row = 2
@@ -104,8 +105,6 @@ class VegaRaspParser:
 
         # заполняем кафедры
         self.db.fill_departments()
-        # заполняем типы пар
-        self.db.fill_worktypes()
 
         # если выбрали файл расписания семетра
         if self.is_default:
@@ -132,7 +131,7 @@ class VegaRaspParser:
 
     def parse_excel_file(self, file_name, default_rasp=True):
         """Парсим данные"""
-        ws = load_workbook(filename=file_name, read_only=True).active
+        ws = load_workbook(filename=file_name).active
         # ------------------Определяем границы расписания------------------
         min_col = ws.min_column
         max_col = ws.max_column
@@ -150,14 +149,14 @@ class VegaRaspParser:
             # если заголовок столбца пустой, пропускаем
             if not group_name:
                 continue
-
+            merged_cells = ws.merged_cells
             if default_rasp:
                 self.parse_default_col(
-                    col, ws, max_row, group_name
+                    col, ws, max_row, group_name, merged_cells
                 )
             else:
                 self.parse_exam_col(
-                    col, ws, max_row, group_name
+                    col, ws, max_row, group_name, merged_cells
                 )
 
     def get_max_row(self, ws):
@@ -186,10 +185,9 @@ class VegaRaspParser:
                 print(f"Max row found after {end_time-start_time}")
                 return row
         end_time = datetime.now()
-        print(f"Max row found after {end_time-start_time}")
         return max_row
 
-    def parse_default_col(self, col, ws, max_row, group_name):
+    def parse_default_col(self, col, ws, max_row, group_name, merged_cells):
         """Разбор колонки группы"""
         # заполняем БД данными по группе
         group_id = self.db.set_group(group_name)
@@ -226,7 +224,6 @@ class VegaRaspParser:
                 continue
 
             # по цвету определяем пренадлежность к кафедре
-            start_color = ws.cell(row, col).fill.start_color
             cur_color = ws.cell(row, col).fill.start_color.rgb
             department_id = self.get_dep_id(cel_color=cur_color)
 
@@ -252,7 +249,7 @@ class VegaRaspParser:
             row += 1
         progress_bar.finish()
 
-    def parse_exam_col(self, col, ws, max_row, group_cell):
+    def parse_exam_col(self, col, ws, max_row, group_cell, merged_cells):
         """Разбор колонки расписания экзаменов"""
         # убираем курс из названия группы
 
@@ -660,8 +657,10 @@ class VegaRaspParser:
             raise ValueError("Версия расписания не была найдена")
 
         self.version = utils.get_version(rasp_title)
-        self.semcode = self.get_semcode(rasp_title)
         self.start_year, self.end_year = utils.get_stud_years(rasp_title)
+        self.semcode = self.get_semcode(rasp_title)
+        # TODO подумать и мб надо такое сделать
+        # self.start_date, self.end_date = utils.get_stud_period(self.semcode)
 
     def get_disc_id(self, lesson_name: str) -> int:
         """Получить id дисциплины по названию"""

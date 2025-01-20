@@ -39,6 +39,22 @@ def get_stud_years(title: str):
     return start_year, end_year
 
 
+def get_stud_period(semcode: int):
+    """Формируем границы учебного семестра"""
+    season = str(semcode)[:2]
+    start_year = str(semcode)[2:4]
+    end_year = str(semcode)[4:]
+    start_date = ""
+    end_date = ""
+    # если осенний семестр
+    if season == "00":
+        start_date = f"20{start_year}-09-01"
+        end_date = f"20{end_year}-02-07"
+    else:
+        start_date = f"20{start_year}-02-07"
+        end_date = f"20{end_year}-07-07"
+    return start_date, end_date
+
 def get_order_by_time(time_start):
     """Определение номера пары по ее времени"""
     order = 1

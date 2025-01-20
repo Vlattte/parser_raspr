@@ -3,14 +3,18 @@
 """
 
 import os
-import psycopg2
-from psycopg2._psycopg import cursor, connection
+from datetime import datetime
+from datetime import timedelta
+
+from psycopg2 import connect
+from psycopg2 import Error
 from dotenv import load_dotenv
-import datetime
 from progress.counter import Stack
 
 
 class Database:
+    """Класс работы в БД"""
+    
     def __init__(self, is_dump=True) -> None:
         """Инициализирует БД"""
         super().__init__()
@@ -35,7 +39,7 @@ class Database:
         self.conn = None
         self.cur = None
         self.sql_requests = None
-        
+
         # очищать ли базу перед работой
         if int(self.is_pre_clear) == 1:
             self.set_conn()
@@ -48,7 +52,7 @@ class Database:
             self.sql_requests = open(
                 self.requests_file_name, "w", encoding="utf-8")
 
-            self.conn = psycopg2.connect(
+            self.conn = connect(
                 database=self.db_name,
                 user=self.db_user,
                 host=self.db_host,
@@ -57,7 +61,7 @@ class Database:
             )
             # TODO multidict
             self.cur = self.conn.cursor()
-        except psycopg2.Error as error:
+        except Error as error:
             print("Set connection error occured", error)
             self.conn = None
             self.cur = None
@@ -89,7 +93,7 @@ class Database:
                 else:
                     return_data = None
                 return return_data
-        except psycopg2.Error as error:
+        except Error as error:
             print(f"PostgreSQL error occured {error} after request:\n{query}")
         finally:
             if self.conn:
@@ -245,20 +249,20 @@ class Database:
     def fill_rasp18_for_period(self, semcode: int, start_date: str, end_date: str):
         """Заполнение дней с start_date до end_date"""
 
-        duration = datetime.datetime.strptime(
-            end_date, "%Y-%m-%d") - datetime.datetime.strptime(start_date, "%Y-%m-%d")
+        duration = datetime.strptime(
+            end_date, "%Y-%m-%d") - datetime.strptime(start_date, "%Y-%m-%d")
         fill_days_bar = Stack('Заполнение rasp18_days', max=duration.days)
         fill_days_bar.check_tty = False
         fill_days_bar.start()
 
-        date = datetime.datetime.strptime(start_date, "%Y-%m-%d").date()
+        date = datetime.strptime(start_date, "%Y-%m-%d").date()
         cur_week = 1
         while str(date) != end_date:
             cur_weekday = (date.weekday()+1) % 7
             self.set_rasp18_days(
                 semcode=semcode, day=str(date), weekday=cur_weekday, week=cur_week
             )
-            date += datetime.timedelta(days=1)
+            date += timedelta(days=1)
             if date.weekday() == 0:  # если новый понедельник
                 cur_week += 1
             fill_days_bar.next()
@@ -412,7 +416,7 @@ class Database:
                 continue
             if isinstance(val, str):
                 where_statements += f"{key} = '{val}' AND "
-            elif isinstance(val, datetime.datetime):
+            elif isinstance(val, datetime):
                 where_statements += f"{key} = '{val}' AND "
             elif isinstance(val, list):
                 where_statements += f"{key} = ARRAY{val} AND "
@@ -439,28 +443,4 @@ class Database:
                  INSERT INTO sc_department (id, title) VALUES(3, 'только для ВЕГИ') ON CONFLICT DO NOTHING;\
                  INSERT INTO sc_department (id, title) VALUES(4, 'только для ВМ') ON CONFLICT DO NOTHING;\
                  INSERT INTO sc_department (id, title) VALUES(5, 'другая') ON CONFLICT DO NOTHING;"
-        self.send_request(query)
-
-    def fill_worktypes(self):
-        """Заполняет таблицу типов пар"""
-        # - 0-пр, 1-лк, 2-лб
-        # - 10-конс, 11-экз, 12-зaч, 13-зaч-д
-        # - 14-кр, 15-кп
-        worktypes = {"пр": 0, "лк": 1, "лб": 2,
-                     "конс": 10, "экз": 11, "зач": 12, "зач-д": 13,
-                     "кр": 14, "кп": 15}
-        table_name = "sc_worktypes"
-
-        # проверка на наличие такой таблицы
-        create_query = f"CREATE TABLE IF NOT EXISTS public.{
-            table_name} (id SERIAL PRIMARY KEY, title text);"
-        self.send_request(create_query)
-
-        query = ""
-        for wt_name, wt_id in worktypes.items():
-            already_exists = self.row_exists(
-                table_name, {"id": wt_id, "title": wt_name})
-            if not already_exists:
-                query += f"INSERT INTO {table_name} (id, title) VALUES({wt_id},\
-                        '{wt_name}') ON CONFLICT DO NOTHING;"
         self.send_request(query)
