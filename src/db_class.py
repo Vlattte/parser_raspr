@@ -2,7 +2,7 @@
 Здесь класс БД
 """
 
-import os
+from os import getenv
 from datetime import datetime
 from datetime import timedelta
 
@@ -14,19 +14,19 @@ from progress.counter import Stack
 
 class Database:
     """Класс работы в БД"""
-    
+
     def __init__(self, is_dump=True) -> None:
         """Инициализирует БД"""
         super().__init__()
 
         load_dotenv()
         self.db_host = "localhost"
-        self.db_name = os.getenv("DB_NAME")
-        self.db_user = os.getenv("DB_USER")
-        self.db_password = os.getenv("DB_PASSWORD")
-        self.db_port = os.getenv("DB_PORT")
-        self.is_dump = os.getenv("DB_DUMP")
-        self.is_pre_clear = os.getenv("PRE_CLEAR")
+        self.db_name = getenv("DB_NAME")
+        self.db_user = getenv("DB_USER")
+        self.db_password = getenv("DB_PASSWORD")
+        self.db_port = getenv("DB_PORT")
+        self.is_dump = getenv("DB_DUMP")
+        self.is_pre_clear = getenv("PRE_CLEAR")
 
         # если не заполнили
         if self.is_dump is None:
@@ -444,3 +444,28 @@ class Database:
                  INSERT INTO sc_department (id, title) VALUES(4, 'только для ВМ') ON CONFLICT DO NOTHING;\
                  INSERT INTO sc_department (id, title) VALUES(5, 'другая') ON CONFLICT DO NOTHING;"
         self.send_request(query)
+
+    def fill_worktypes(self):
+        """Заполняет таблицу типов пар"""
+        # - 0-пр, 1-лк, 2-лб
+        # - 10-конс, 11-экз, 12-зaч, 13-зaч-д
+        # - 14-кр, 15-кп
+        worktypes = {"пр": 0, "лк": 1, "лб": 2,
+                     "конс": 10, "экз": 11, "зач": 12, "зач-д": 13,
+                     "кр": 14, "кп": 15}
+        table_name = "sc_worktypes"
+
+        # проверка на наличие такой таблицы
+        create_query = f"""CREATE TABLE IF NOT EXISTS public.{
+            table_name} (id SERIAL PRIMARY KEY, title text);"""
+        self.send_request(create_query)
+
+        query = ""
+        for wt_name, wt_id in worktypes.items():
+            already_exists = self.row_exists(
+                table_name, {"id": wt_id, "title": wt_name})
+            if not already_exists:
+                query += f"INSERT INTO {table_name} (id, title) VALUES({wt_id},\
+                        '{wt_name}') ON CONFLICT DO NOTHING;"
+        if query != "":
+            self.send_request(query)

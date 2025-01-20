@@ -8,4 +8,4 @@ __pycache__/*
 
 .idea/*
 
-sql_requests.sql
+sql_scripts/sql_dump.sql

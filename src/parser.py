@@ -14,7 +14,6 @@ from datetime import timedelta
 
 # usefull
 from openpyxl import load_workbook
-from openpyxl.worksheet.merge import MergedCellRange
 from progress.bar import PixelBar
 from dotenv import load_dotenv
 
@@ -106,6 +105,9 @@ class VegaRaspParser:
         # заполняем кафедры
         self.db.fill_departments()
 
+        # заполняем типы пар
+        self.db.fill_worktypes()
+
         # если выбрали файл расписания семетра
         if self.is_default:
             print("<--PARSING SEMESTR-->")
@@ -161,8 +163,6 @@ class VegaRaspParser:
 
     def get_max_row(self, ws):
         """Находим последнюю значимую строку"""
-        start_time = datetime.now()
-
         max_row = ws.max_row
         max_col = ws.max_column
         legend_pattern = r"(\w)*егенд[\w\s]*"
@@ -181,10 +181,7 @@ class VegaRaspParser:
 
         for row in range(max_row - 1, 1, -1):
             if not utils.is_hsplitter(ws, row):
-                end_time = datetime.now()
-                print(f"Max row found after {end_time-start_time}")
                 return row
-        end_time = datetime.now()
         return max_row
 
     def parse_default_col(self, col, ws, max_row, group_name, merged_cells):
@@ -223,6 +220,10 @@ class VegaRaspParser:
                 row += 1
                 continue
 
+            # является ли длинной парой (НИР, ВОЕНКА, условно на весь день)
+            coord = ws.cell(row, col).coordinate
+            lesson_count = utils.get_lesson_count(merged_cells, coord)
+
             # по цвету определяем пренадлежность к кафедре
             cur_color = ws.cell(row, col).fill.start_color.rgb
             department_id = self.get_dep_id(cel_color=cur_color)
@@ -235,15 +236,16 @@ class VegaRaspParser:
             lesson_parts = self.get_lesson_parts(lesson_cell)
 
             # заполнение БД новыми данными
-            self.fill_group_day_db(
-                lesson_parts,
-                teacher,
-                order,
-                weekday,
-                group_id,
-                room,
-                department_id,
-            )
+            for pair_num in range(order, order+lesson_count):
+                self.fill_group_day_db(
+                    lesson_parts,
+                    teacher,
+                    pair_num,
+                    weekday,
+                    group_id,
+                    room,
+                    department_id,
+                )
 
             # переходим к новой паре
             row += 1

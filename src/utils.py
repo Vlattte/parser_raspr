@@ -1,6 +1,7 @@
 """Вспомогательные методы"""
 
 from re import search
+from re import fullmatch
 from copy import deepcopy
 from datetime import datetime, time
 
@@ -169,3 +170,25 @@ def swap_with_prev_value(prev_val, cur_val):
     else:
         prev = cur
     return prev, cur
+
+def get_lesson_count(merged_cells, coord) -> int:
+    """Если это пара как НИР или военка(смерджено около 4-5 пар), то вернуть число пар"""
+    merged_range = None
+    if coord in merged_cells:
+        coord_pattern = coord + r':\w+\d+'
+        merged_cells_list = merged_cells.sorted()
+        merged_range = None
+        for cell_range in merged_cells_list:
+            if fullmatch(coord_pattern, cell_range.coord):
+                merged_range = cell_range
+                break
+    if merged_range is None:
+        return 1
+
+    # смотрим низкую строку, чтобы посчитать сколько нужно пар
+    lesson_count = merged_range.max_row - merged_range.min_row
+    if  lesson_count > 2:
+        lesson_count += 1
+        # делим на 2, так как каждая ячейка содержит четную и нечетные недели
+        return int(lesson_count/2)
+    return 1
