@@ -20,7 +20,7 @@ class Database:
         super().__init__()
 
         load_dotenv()
-        self.db_host = "localhost"
+        self.db_host = getenv("DB_HOST")
         self.db_name = getenv("DB_NAME")
         self.db_user = getenv("DB_USER")
         self.db_password = getenv("DB_PASSWORD")
