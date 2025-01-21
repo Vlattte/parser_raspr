@@ -44,6 +44,7 @@ class Database:
         if int(self.is_pre_clear) == 1:
             self.set_conn()
             self.__clear_tables()
+            print("<--TABLES CLEARED-->")
             self.close_conn()
 
     def set_conn(self):

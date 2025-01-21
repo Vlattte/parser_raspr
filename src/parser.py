@@ -30,9 +30,8 @@ SUMMER_SUBSTR = "летн"
 
 # TODO распараллелить
 # TODO прогресс бар как декоратор
-# TODO разобраться с цветами ячеек
 # TODO брать расписание с сайта ВЕГИ
-# TODO загружать расписание с сайта ВЕГИ
+# TODO сделать НИР костылем, в котором 
 
 class VegaRaspParser:
     """Парсер excel расписания"""
@@ -326,13 +325,12 @@ class VegaRaspParser:
             weekday_num = self.week_strs.index(weekday.upper())
             week = self.db.get_week_by_date(exam_date)
             worktype = utils.get_worktype(exam_type)
-            disc_id = self.get_disc_id(lesson_name)
+            cur_color = ws.cell(row, col + 1).fill.start_color.index
+            department_id = self.get_dep_id(cel_color=cur_color)
+            disc_id = self.get_disc_id(lesson_name, department_id)
 
             # если перепутали название дисциплины, добавим такую
             if disc_id is None:
-                cur_color = ws.cell(row, col + 1).fill.start_color.index
-                department_id = self.get_dep_id(cel_color=cur_color)
-
                 disc_id = self.db.set_disc(
                     title="null",
                     shorttitle=lesson_name,
@@ -664,9 +662,9 @@ class VegaRaspParser:
         # TODO подумать и мб надо такое сделать
         # self.start_date, self.end_date = utils.get_stud_period(self.semcode)
 
-    def get_disc_id(self, lesson_name: str) -> int:
+    def get_disc_id(self, lesson_name: str, department_id: int) -> int:
         """Получить id дисциплины по названию"""
-        params = {"shorttitle": lesson_name}
+        params = {"shorttitle": lesson_name, "department_id": department_id}
         disc_id = self.db.get_id(table_name="sc_disc", params=params)
         return disc_id
 
@@ -675,29 +673,29 @@ class VegaRaspParser:
         department_name = "другая"
         match cel_color:
             # зеленый
-            case "FFCCFF66":
+            case "FFCCFF66":    # только для ВЕГИ
                 department_name = "только для ВЕГИ"
             # розовый
-            case "FFFFCCFF":
+            case "FFFFCCFF":    # только для ВМ
                 department_name = "только для ВМ"
             # темно желтый
-            case "FFFFE15A":
+            case "FFFFE15A":    # Для всех, ведет кафедра ВМ
                 department_name = "ВМ"
-            case "FFFFF56D":
+            case "FFFFF56D":    # Для всех, ведет кафедра ВМ/Просто для всех(у бакалавров)
                 department_name = "ВМ"
             # желтый/бледно желтый
-            case "FFF1FF67":  # желтый
+            case "FFF1FF67":    # 
                 department_name = "ВЕГА"
-            case "FFF4FF67":  # 
+            case "FFF4FF67":    # ведет ВЕГА для всех
                 department_name = "ВЕГА"
-            case "FFEAFF9F":  #
+            case "FFEAFF9F":    # ведет ВЕГА
                 department_name = "ВЕГА"
-            case "FFE5FF99":  #
+            case "FFE5FF99":    # ведет ВЕГА
                 department_name = "ВЕГА"
             # голубой цвет
-            case "FFB2ECFF":
+            case "FFB2ECFF":    # Для всех, ведут другие кафедры
                 department_name = "другая"
-            case "FFD1F3FF":
+            case "FFD1F3FF":    # Для всех, ведут другие кафедры
                 department_name = "другая"
             # белый/без заливки
             case "0":
