@@ -282,7 +282,7 @@ class Database:
 
         query = f" \
                 INSERT INTO {table_name} (semcode, day, weekday, week) \
-                VALUES ({semcode}, '{day}', {weekday}, {week})  \
+                VALUES ({semcode}, date('{day}'), {weekday}, {week})  \
                 ON CONFLICT DO NOTHING RETURNING id;"
         rasp18_days_id = self.send_request(query, True)
         return rasp18_days_id
@@ -415,9 +415,9 @@ class Database:
         for key, val in params.items():
             if val is None:
                 continue
-            if isinstance(val, str):
-                where_statements += f"{key} = '{val}' AND "
-            elif isinstance(val, datetime):
+            if key == "day":
+                where_statements += f"{key} = date('{val}') AND "
+            elif isinstance(val, str):
                 where_statements += f"{key} = '{val}' AND "
             elif isinstance(val, list):
                 where_statements += f"{key} = ARRAY{val} AND "
