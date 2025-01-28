@@ -62,6 +62,8 @@ class Database:
             )
             # TODO multidict
             self.cur = self.conn.cursor()
+            # настройка формата дат
+            self.send_request("SET datestyle = 'ISO, DMY';")
         except Error as error:
             print("Set connection error occured", error)
             self.conn = None

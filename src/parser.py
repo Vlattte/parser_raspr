@@ -157,7 +157,7 @@ class VegaRaspParser:
                 )
             else:
                 self.parse_exam_col(
-                    col, ws, max_row, group_name, merged_cells
+                    col, ws, max_row, group_name
                 )
 
     def get_max_row(self, ws):
@@ -200,6 +200,8 @@ class VegaRaspParser:
         progress_bar.start()
 
         while row < max_row:
+            if row == 57:
+                print()
             progress_bar.next()
 
             weekday = ws.cell(row, self.weekday_col).value
@@ -217,6 +219,9 @@ class VegaRaspParser:
             # если пустая клетка, идем дальше
             if lesson_cell is None:
                 row += 1
+                # если строка нечетная, то номер пары + 1
+                if row % 2 == 0:
+                    order += 1
                 continue
 
             # является ли длинной парой (НИР, ВОЕНКА, условно на весь день)
@@ -227,7 +232,6 @@ class VegaRaspParser:
             cur_color = ws.cell(row, col).fill.start_color.rgb
             department_id = self.get_dep_id(cel_color=cur_color)
 
-            # TODO если по четным неделям, то тут будет проблема с номером пары
             # если смешаная клетка
             if cur_order is not None:
                 order = cur_order
@@ -250,7 +254,7 @@ class VegaRaspParser:
             row += 1
         progress_bar.finish()
 
-    def parse_exam_col(self, col, ws, max_row, group_cell, merged_cells):
+    def parse_exam_col(self, col, ws, max_row, group_cell):
         """Разбор колонки расписания экзаменов"""
         # убираем курс из названия группы
 
@@ -313,7 +317,6 @@ class VegaRaspParser:
                 time_end = utils.time_in_90_minutes(time_start)
 
             cur_order = utils.get_order_by_time(time_start)
-            last_order = utils.get_order_by_time(time_end)
 
             # Заполение таблиц
             month = int(exam_date[-2:])
@@ -359,26 +362,6 @@ class VegaRaspParser:
             )
             # set_rasp18_preps
             if teacher is not None:
-
-                # TODO добавить, когда можно будет делить преподов ведущих одну пару
-                # teacher = teacher.replace(", ", ",")
-                # if teacher.find("\n") != -1 or teacher.find(",\n") != -1:
-                #     teachers = teacher.split(",\n")
-                #     if len(teachers) < 2:
-                #         teachers = teacher.split("\n")
-                #     for t in teachers:
-                #         t = t.replace("\n", "")
-                #         params = {"fio": t}
-                #         prep_id = self.db.get_id(
-                #             table_name="sc_prep", params=params)
-                #         # если перепутали имя препода, добавим такую
-                #         if prep_id is None:
-                #             prep_id = self.db.set_prep(fio=t, chair="null",
-                #                                        degree="null", photo="null")
-                #         self.db.set_rasp18_preps(
-                #             rasp18_id=rasp18_id, prep_id=prep_id)
-                # else:
-
                 params = {"fio": teacher}
                 prep_id = self.db.get_id(table_name="sc_prep", params=params)
                 # если перепутали имя препода, добавим такую
