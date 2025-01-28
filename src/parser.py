@@ -200,8 +200,6 @@ class VegaRaspParser:
         progress_bar.start()
 
         while row < max_row:
-            if row == 57:
-                print()
             progress_bar.next()
 
             weekday = ws.cell(row, self.weekday_col).value
