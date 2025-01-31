@@ -5,6 +5,8 @@ from re import fullmatch
 from copy import deepcopy
 from datetime import datetime, time
 
+from src.structs import ListData
+
 
 def get_lesson_type(lesson: str) -> str:
     """Вытащить тип пары (лк, пр, лб)"""
@@ -192,3 +194,46 @@ def get_lesson_count(merged_cells, coord) -> int:
         # делим на 2, так как каждая ячейка содержит четную и нечетные недели
         return int(lesson_count/2)
     return 1
+
+def get_week_parity(lesson: str) -> int:
+    """Получить четность недели"""
+    parity_list = ListData.PARITY.value
+    for i in reversed(parity_list):
+        if i in lesson:
+            return parity_list.index(i) + 1
+    return 0
+
+def get_disc_name(lesson: str, lesson_parts: dict) -> str:
+    """Убрать лишнее из названия дисциплины и вернуть только само название"""
+    disc_name = deepcopy(lesson)
+
+    # убираем недели
+    if lesson_parts["parity"] == 0 and len(lesson_parts["weeks_list"]) < 16:
+        disc_name = disc_name.removeprefix(lesson_parts["weeks_text"])
+    elif lesson_parts["parity"] > 0:
+        parity_list = ListData.PARITY.value
+        parity_str = parity_list[lesson_parts["parity"] - 1]
+        disc_name = disc_name.removeprefix(parity_str)
+
+    # убираем тип пары
+    if lesson_parts["worktype"] != "пр":
+        disc_name = disc_name.removesuffix("лк")
+
+    # убираем подгруппу
+    if lesson_parts["sub_group"] != 0:
+        subgroups = ListData.SUBGROUPS.value
+        sub_group_str = subgroups[lesson_parts["sub_group"] - 1]
+        disc_name = disc_name.removesuffix(sub_group_str)
+
+    # чтобы избежать опечаток с пробелами, добавляем после всех точек пробел
+
+    # Лин. алг.и ан. геом. -> Лин.алг.и ан.геом.
+    disc_name = disc_name.replace(". ", ".")
+    # Лин.алг.и ан.геом.   -> Лин. алг. и ан. геом.
+    disc_name = disc_name.replace(".", ". ")
+
+    # убираем лишние пробелы по краям
+    disc_name = disc_name.removeprefix(" ")
+    disc_name = disc_name.removesuffix(" ")
+
+    return disc_name

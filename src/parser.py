@@ -6,7 +6,7 @@ from os import path
 
 from re import fullmatch
 from re import search
-from copy import deepcopy
+
 # datetime
 from datetime import datetime
 from datetime import time
@@ -18,8 +18,9 @@ from progress.bar import PixelBar
 from dotenv import load_dotenv
 
 # custom
-import src.utils as utils
+from src import utils
 from src.db_class import Database
+from src.structs import ListData
 
 WEEKS = 17
 AUTUMN_SUBSTR = "осен"
@@ -49,13 +50,15 @@ class VegaRaspParser:
         if self.default_filename is not None:
             if not path.exists(self.default_filename):
                 raise ValueError(
-                    f"Выбран несуществующий файл файл расписания семестра: {self.default_filename}")
+                    f"Выбран несуществующий файл файл расписания семестра: {self.default_filename}"
+                )
             self.is_default = True
 
         if self.session_filename is not None:
             if not path.exists(self.session_filename):
                 raise ValueError(
-                    f"Выбран несуществующий файл расписания сессии: {self.session_filename}")
+                    f"Выбран несуществующий файл расписания сессии: {self.session_filename}"
+                )
             self.is_session = True
 
         self.group_row = 2
@@ -65,10 +68,6 @@ class VegaRaspParser:
         # позиция ячейки с версией
         self.version_col = 1
         self.version = 0
-
-        self.subgroups = ["(1пг)", "(2пг)"]
-        self.parity = ["Iн", "IIн"]
-        self.week_strs = ["ВС", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"]
 
         # дата начала и конца семестра
         self.start_date = getenv("START_DATE")
@@ -106,26 +105,26 @@ class VegaRaspParser:
 
         # если выбрали файл расписания семетра
         if self.is_default:
-            print("<--PARSING SEMESTR-->")
-            self.change_to_dafault_params()
             self.parse_semestr()
-            print("<--RASP PARSED-->")
         # если выбрали файл расписания сессии
         if self.is_session:
-            print("<--PARSING SESSION-->")
-            self.change_to_session_params()
             self.parse_exam()
-            print("<--SESSION PARSED-->")
 
         self.db.close_conn()
 
     def parse_semestr(self):
         """Парсинг расписания семестровых пар"""
+        print(f"<--PARSING SEMESTR: {self.default_filename}-->")
+        self.change_to_dafault_params()
         self.parse_excel_file(self.default_filename)
+        print(f"<--RASP PARSED: {self.default_filename}-->")
 
     def parse_exam(self):
         """Парсинг расписания экзаменов"""
+        print(f"<--PARSING SESSION: {self.session_filename}-->")
+        self.change_to_session_params()
         self.parse_excel_file(self.session_filename, False)
+        print(f"<--SESSION PARSED: {self.session_filename}-->")
 
     def parse_excel_file(self, file_name, default_rasp=True):
         """Парсим данные"""
@@ -139,8 +138,7 @@ class VegaRaspParser:
         self.fill_rasp_title_parts(max_row, ws)
 
         # заполняем дни таблицы rasp18_days
-        self.db.fill_rasp18_for_period(
-            self.semcode, self.start_date, self.end_date)
+        self.db.fill_rasp18_for_period(self.semcode, self.start_date, self.end_date)
         # ---------------Парсим расписание в цикле по группам--------------
         for col in range(min_col, max_col + 1):
             group_name = ws.cell(self.group_row, col).value
@@ -149,13 +147,9 @@ class VegaRaspParser:
                 continue
             merged_cells = ws.merged_cells
             if default_rasp:
-                self.parse_default_col(
-                    col, ws, max_row, group_name, merged_cells
-                )
+                self.parse_default_col(col, ws, max_row, group_name, merged_cells)
             else:
-                self.parse_exam_col(
-                    col, ws, max_row, group_name
-                )
+                self.parse_exam_col(col, ws, max_row, group_name)
 
     def get_max_row(self, ws):
         """Находим последнюю значимую строку"""
@@ -191,8 +185,7 @@ class VegaRaspParser:
         # проходимся по текущему столбцу по всем строкам
         row = self.group_row + 1
 
-        progress_bar = PixelBar(
-            group_name, max=max_row-row, suffix='%(percent)d%%')
+        progress_bar = PixelBar(group_name, max=max_row - row, suffix="%(percent)d%%")
         progress_bar.check_tty = False
         progress_bar.start()
 
@@ -234,7 +227,7 @@ class VegaRaspParser:
             lesson_parts = self.get_lesson_parts(lesson_cell)
 
             # заполнение БД новыми данными
-            for pair_num in range(order, order+lesson_count):
+            for pair_num in range(order, order + lesson_count):
                 self.fill_group_day_db(
                     lesson_parts,
                     teacher,
@@ -262,8 +255,7 @@ class VegaRaspParser:
         prev_date_cell = None
         row = self.group_row + 2
 
-        progress_bar = PixelBar(
-            group_name, max=max_row-row, suffix='%(percent)d%%')
+        progress_bar = PixelBar(group_name, max=max_row - row, suffix="%(percent)d%%")
         progress_bar.check_tty = False
         progress_bar.start()
 
@@ -320,7 +312,8 @@ class VegaRaspParser:
             else:
                 exam_date += "." + str(self.end_year)
 
-            weekday_num = self.week_strs.index(weekday.upper())
+            week_strs = ListData.WEEK_STRS.value    
+            weekday_num = week_strs.index(weekday.upper())
             week = self.db.get_week_by_date(exam_date)
             worktype = utils.get_worktype(exam_type)
             cur_color = ws.cell(row, col + 1).fill.start_color.index
@@ -400,16 +393,16 @@ class VegaRaspParser:
         lesson_parts["worktype"] = worktype
 
         # удаляем лишнее и получаем название дисциплины
-        lesson_parts["disc_name"] = self.get_disc_name(
-            lesson_cell, lesson_parts)
+        lesson_parts["disc_name"] = utils.get_disc_name(lesson_cell, lesson_parts)
 
         return lesson_parts
 
     def get_subgroup(self, lesson: str) -> int:
         """Получить подгруппу"""
-        for subgroup in self.subgroups:
-            if subgroup in lesson:
-                return self.subgroups.index(subgroup) + 1
+        subgroups = ListData.SUBGROUPS.value
+        for sub_gr in subgroups:
+            if sub_gr in lesson:
+                return subgroups.index(sub_gr) + 1
         return 0
 
     def get_weeks_parts(self, lesson: str) -> dict:
@@ -417,15 +410,15 @@ class VegaRaspParser:
         all_weeks = list(range(1, WEEKS))
         weeks_text = ", ".join(map(str, all_weeks))
 
-        weeks_parts = {"parity": 0, "weeks_list": all_weeks,
-                       "weeks_text": weeks_text}
+        weeks_parts = {"parity": 0, "weeks_list": all_weeks, "weeks_text": weeks_text}
 
-        parity = self.get_week_parity(lesson)
+        parity = utils.get_week_parity(lesson)
         weeks_parts["parity"] = parity
         # генирируем массив всех недель
         if parity != 0:
+            parity_list = ListData.PARITY.value
             weeks_parts["weeks_list"] = list(range(parity, WEEKS, 2))
-            weeks_parts["weeks_text"] = self.parity[parity - 1]
+            weeks_parts["weeks_text"] = parity_list[parity - 1]
             return weeks_parts
 
         pattern = r"\d+(,(\s)?\d+)*н"
@@ -439,46 +432,6 @@ class VegaRaspParser:
             return weeks_parts
 
         return weeks_parts
-
-    def get_week_parity(self, lesson: str) -> int:
-        """Получить четность недели"""
-        for i in reversed(self.parity):
-            if i in lesson:
-                return self.parity.index(i) + 1
-        return 0
-
-    def get_disc_name(self, lesson: str, lesson_parts: dict) -> str:
-        """Убрать лишнее из названия дисциплины и вернуть только само название"""
-        disc_name = deepcopy(lesson)
-
-        # убираем недели
-        if lesson_parts["parity"] == 0 and len(lesson_parts["weeks_list"]) < 16:
-            disc_name = disc_name.removeprefix(lesson_parts["weeks_text"])
-        elif lesson_parts["parity"] > 0:
-            parity_str = self.parity[lesson_parts["parity"] - 1]
-            disc_name = disc_name.removeprefix(parity_str)
-
-        # убираем тип пары
-        if lesson_parts["worktype"] != "пр":
-            disc_name = disc_name.removesuffix("лк")
-
-        # убираем подгруппу
-        if lesson_parts["sub_group"] != 0:
-            sub_group_str = self.subgroups[lesson_parts["sub_group"] - 1]
-            disc_name = disc_name.removesuffix(sub_group_str)
-
-        # чтобы избежать опечаток с пробелами, добавляем после всех точек пробел
-
-        # Лин. алг.и ан. геом. -> Лин.алг.и ан.геом.
-        disc_name = disc_name.replace(". ", ".")
-        # Лин.алг.и ан.геом.   -> Лин. алг. и ан. геом.
-        disc_name = disc_name.replace(".", ". ")
-
-        # убираем лишние пробелы по краям
-        disc_name = disc_name.removeprefix(" ")
-        disc_name = disc_name.removesuffix(" ")
-
-        return disc_name
 
     def get_semcode(self, title: str) -> int:
         """Получение кода семестра по заголовку"""
@@ -501,14 +454,14 @@ class VegaRaspParser:
 
     # TODO переименовать
     def fill_group_day_db(
-            self,
-            lesson_parts: dict,
-            teacher: str,
-            order: int,
-            weekday: str,
-            group_id: int,
-            room: str,
-            department_id: int
+        self,
+        lesson_parts: dict,
+        teacher: str,
+        order: int,
+        weekday: str,
+        group_id: int,
+        room: str,
+        department_id: int,
     ):
         """Заполнение таблиц по данным одного дня недели определенной группы"""
         # таблица дисциплин
@@ -520,8 +473,8 @@ class VegaRaspParser:
         )
 
         # таблица расписания
-        # TODO глянуть с НИР у маг 2 курс, куда какой НИР пишется, с каким disc_id
-        weekday_num = self.week_strs.index(weekday)
+        week_strs = ListData.WEEK_STRS.value    
+        weekday_num = week_strs.index(weekday)
         rasp7_id = self.db.set_rasp7(
             semcode=self.semcode,
             version=self.version,
@@ -567,21 +520,35 @@ class VegaRaspParser:
             prep_id,
             room,
             group_id,
-            lesson_parts["sub_group"]
+            lesson_parts["sub_group"],
         )
 
     def fill_rasp18_for_disc(
-            self, weeksarray, weekday, order, worktype, disc_id, prep_id, room, group_id, subgroup
+        self,
+        weeksarray,
+        weekday,
+        order,
+        worktype,
+        disc_id,
+        prep_id,
+        room,
+        group_id,
+        subgroup,
     ):
         """Заполнение rasp18 для дисциплины на до конца семестра"""
-        day_order = (self.week_strs.index(weekday) - 1) % 7
-        first_day = datetime.strptime(
-            self.start_date, "%Y-%m-%d").date()
+        week_strs = ListData.WEEK_STRS.value
+        
+        day_order = (week_strs.index(weekday) - 1) % 7
+        first_day = datetime.strptime(self.start_date, "%Y-%m-%d").date()
         weekday_delta = abs(day_order - first_day.weekday())
 
-        weekday_num = self.week_strs.index(weekday)
-        params = {"semcode": self.semcode, "day": str(first_day),
-                  "weekday": weekday_num, "week": 1}
+        weekday_num = week_strs.index(weekday)
+        params = {
+            "semcode": self.semcode,
+            "day": str(first_day),
+            "weekday": weekday_num,
+            "week": 1,
+        }
         for week in weeksarray:
             # считаем дату пары
             cur_delta = weekday_delta + (week - 1) * 7
@@ -603,7 +570,7 @@ class VegaRaspParser:
                 worktype=worktype,
                 disc_id=disc_id,
                 timestart=str(time_start),
-                timeend=str(time_end)
+                timeend=str(time_end),
             )
 
             self.db.set_rasp18_groups(rasp18_id, group_id, subgroup)
@@ -614,10 +581,10 @@ class VegaRaspParser:
 
     def fill_rasp_title_parts(self, max_row: int, ws):
         """
-            Заполнить по заголовоку расписания нужные для парсера данные:
-            учебные года, версия, время года семестра
+        Заполнить по заголовоку расписания нужные для парсера данные:
+        учебные года, версия, время года семестра
 
-            return start_year, end_year, version
+        return start_year, end_year, version
         """
         rasp_title = ""
         is_version = False
@@ -651,29 +618,29 @@ class VegaRaspParser:
         department_name = "другая"
         match cel_color:
             # зеленый
-            case "FFCCFF66":    # только для ВЕГИ
+            case "FFCCFF66":  # только для ВЕГИ
                 department_name = "только для ВЕГИ"
             # розовый
-            case "FFFFCCFF":    # только для ВМ
+            case "FFFFCCFF":  # только для ВМ
                 department_name = "только для ВМ"
             # темно желтый
-            case "FFFFE15A":    # Для всех, ведет кафедра ВМ
+            case "FFFFE15A":  # Для всех, ведет кафедра ВМ
                 department_name = "ВМ"
-            case "FFFFF56D":    # Для всех, ведет кафедра ВМ/Просто для всех(у бакалавров)
+            case "FFFFF56D":  # Для всех, ведет кафедра ВМ/Просто для всех(у бакалавров)
                 department_name = "ВМ"
             # желтый/бледно желтый
-            case "FFF1FF67":    # 
+            case "FFF1FF67":  #
                 department_name = "ВЕГА"
-            case "FFF4FF67":    # ведет ВЕГА для всех
+            case "FFF4FF67":  # ведет ВЕГА для всех
                 department_name = "ВЕГА"
-            case "FFEAFF9F":    # ведет ВЕГА
+            case "FFEAFF9F":  # ведет ВЕГА
                 department_name = "ВЕГА"
-            case "FFE5FF99":    # ведет ВЕГА
+            case "FFE5FF99":  # ведет ВЕГА
                 department_name = "ВЕГА"
             # голубой цвет
-            case "FFB2ECFF":    # Для всех, ведут другие кафедры
+            case "FFB2ECFF":  # Для всех, ведут другие кафедры
                 department_name = "другая"
-            case "FFD1F3FF":    # Для всех, ведут другие кафедры
+            case "FFD1F3FF":  # Для всех, ведут другие кафедры
                 department_name = "другая"
             # белый/без заливки
             case "0":
