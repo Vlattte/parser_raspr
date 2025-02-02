@@ -309,7 +309,7 @@ class Database:
 
         date = datetime.strptime(start_date, "%Y-%m-%d").date()
         cur_week = 1
-        while str(date) != end_date:
+        while str(date) <= end_date:
             cur_weekday = (date.weekday() + 1) % 7
             self.set_rasp18_days(
                 semcode=semcode, day=str(date), weekday=cur_weekday, week=cur_week
