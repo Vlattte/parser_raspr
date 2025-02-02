@@ -50,8 +50,7 @@ class Database:
     def set_conn(self):
         """Установка соединения"""
         try:
-            self.sql_requests = open(
-                self.requests_file_name, "w", encoding="utf-8")
+            self.sql_requests = open(self.requests_file_name, "w", encoding="utf-8")
 
             self.conn = connect(
                 database=self.db_name,
@@ -91,9 +90,9 @@ class Database:
 
             if is_return:
                 return_data = self.cur.fetchall()
-                if len(return_data) > 0:
+                if 0 < len(return_data) < 2:
                     return_data = return_data[0][0]
-                else:
+                elif len(return_data) < 1:
                     return_data = None
                 return return_data
         except Error as error:
@@ -104,7 +103,9 @@ class Database:
 
     def __clear_tables(self):
         """ОЧИЩАЕТ ВСЕ ТАБЛИЦЫ"""
-        with open("sql_scripts/clear_script.sql", "r", encoding="utf-8") as clear_script:
+        with open(
+            "sql_scripts/clear_script.sql", "r", encoding="utf-8"
+        ) as clear_script:
             query = clear_script.read()
             query = query.replace("\n", "")
             self.send_request(query)
@@ -160,8 +161,10 @@ class Database:
         """
         table_name = "sc_disc"
         if title is None and shorttitle is None or department_id == -1:
-            print(f"""ОШИБКА при записи дисциплины: title: {title},
-                    shorttitle: {shorttitle}, department_id: {department_id}""")
+            print(
+                f"""ОШИБКА при записи дисциплины: title: {title},
+                    shorttitle: {shorttitle}, department_id: {department_id}"""
+            )
 
         # вторая такая же дисциплина может быть, только если у них не совпадает department_id
         # поэтому проверяем на повтор
@@ -207,11 +210,7 @@ class Database:
         """добавить запись в семидневное расписание"""
         table_name = "sc_rasp7_groups"
 
-        params = {
-            "rasp7_id": rasp7_id,
-            "group_id": group_id,
-            "subgroup": sub_group
-        }
+        params = {"rasp7_id": rasp7_id, "group_id": group_id, "subgroup": sub_group}
         rasp7_groups_id = self.get_id(table_name, params)
         if rasp7_groups_id is not None:
             return rasp7_groups_id
@@ -245,6 +244,50 @@ class Database:
         rasp7_rooms_id = self.send_request(query, True)
         return rasp7_rooms_id
 
+    def clear_rasp_data_between_weeks(self, semcode: int, is_semestr: bool):
+        """Очистка промежутка недель от данных, чтобы в них залить новую версию
+        Затрагивает таблицы, которые зависят от rasp18_id и саму sc_rasp18"""
+        # включает в себя пр, лк, лб
+        worktype_clause = "< 3"
+        if not is_semestr:
+            # включает в себя экз, зач, зач-д, к/р, к/п
+            worktype_clause = "> 9"
+
+        overwrite_day_start = getenv("OVERWRITE_DAY_START")
+        overwrite_day_end = getenv("OVERWRITE_DAY_END")
+        if overwrite_day_start is None or overwrite_day_end is None:
+            print(
+                f"Расписание для семестра с кодом {semcode} будет переписано целиком!!!"
+            )
+            overwrite_day_start = getenv("START_DATE")
+            overwrite_day_end = getenv("END_DATE")
+
+        day_params = {"semcode": semcode, "day": overwrite_day_start}
+        start_day_id = self.get_id("sc_rasp18_days", day_params)
+        day_params = {"semcode": semcode, "day": overwrite_day_end}
+        end_day_id = self.get_id("sc_rasp18_days", day_params)
+
+        query = f"""DELETE FROM sc_rasp18
+        where semcode = {semcode} AND worktype {worktype_clause}  
+        AND day_id >= {start_day_id} AND day_id <= {end_day_id} RETURNING id;"""
+        return_ids = self.send_request(query=query, is_return=True)
+        if return_ids is None:
+            return
+
+        return_ids = [day_id[0] for day_id in return_ids if day_id is not None]
+
+        del_r18_where_clause = f"""WHERE rasp18_id IN 
+        ({" ".join(str(rasp18_id) for rasp18_id in return_ids)});"""
+
+        del_r18_groups = f"DELETE FROM sc_rasp18_groups {del_r18_where_clause}"
+        self.send_request(del_r18_groups)
+
+        del_r18_preps = f"DELETE FROM sc_rasp18_preps {del_r18_where_clause}"
+        self.send_request(del_r18_preps)
+
+        del_r18_rooms = f"DELETE FROM sc_rasp18_rooms {del_r18_where_clause}"
+        self.send_request(del_r18_rooms)
+
     # ------------------------ #
     # ---------rasp18--------- #
     # ------------------------ #
@@ -252,16 +295,22 @@ class Database:
     def fill_rasp18_for_period(self, semcode: int, start_date: str, end_date: str):
         """Заполнение дней с start_date до end_date"""
 
-        duration = datetime.strptime(
-            end_date, "%Y-%m-%d") - datetime.strptime(start_date, "%Y-%m-%d")
-        fill_days_bar = Stack('Заполнение rasp18_days', max=duration.days)
+        duration = datetime.strptime(end_date, "%Y-%m-%d") - datetime.strptime(
+            start_date, "%Y-%m-%d"
+        )
+        if duration.days < 0:
+            raise ValueError(
+                "Начальная дата позже конечной, измените файл конфигурации"
+            )
+
+        fill_days_bar = Stack("Заполнение rasp18_days", max=duration.days)
         fill_days_bar.check_tty = False
         fill_days_bar.start()
 
         date = datetime.strptime(start_date, "%Y-%m-%d").date()
         cur_week = 1
         while str(date) != end_date:
-            cur_weekday = (date.weekday()+1) % 7
+            cur_weekday = (date.weekday() + 1) % 7
             self.set_rasp18_days(
                 semcode=semcode, day=str(date), weekday=cur_weekday, week=cur_week
             )
@@ -276,8 +325,7 @@ class Database:
         table_name = "sc_rasp18_days"
 
         # если такой день уже есть, то добавляет его не нужно
-        params = {"semcode": semcode, "day": day,
-                  "weekday": weekday, "week": week}
+        params = {"semcode": semcode, "day": day, "weekday": weekday, "week": week}
         day_id = self.get_id(table_name, params)
         if day_id is not None:
             return day_id
@@ -299,7 +347,6 @@ class Database:
         disc_id: int,
         timestart: str,
         timeend: str,
-        is_execute_req: bool = True
     ):
         """
         kind integer  -- 0обычное,1перенос,2повтор
@@ -307,33 +354,46 @@ class Database:
             -- 11экз,12зач,13зач-д,
             -- 14кр,15кп
         """
+        # у одной и той же группы у такой же подгруппы не может
+        # быть две пары одновременно
         table_name = "sc_rasp18"
 
         # только часы и минуты, секунды образаем
         timestart_hm = timestart[:-3]
         timeend_hm = timeend[:-3]
-        # если id уже есть, ничего не вставляем, возвращаем id
-        query = f" \
-                INSERT INTO {table_name} (semcode, day_id, pair, kind, worktype, disc_id, timestart, timeend) \
-                VALUES ({semcode}, {day_id}, {pair}, {kind}, {worktype}, {disc_id}, '{timestart_hm}', '{timeend_hm}')  \
-                ON CONFLICT DO NOTHING RETURNING id;"
-        if is_execute_req:
-            rasp18_id = self.send_request(query, True)
+
+        # если такая пара уже записана, то другие таблицы
+        # будут ссылаться на одинаковый rasp18_id
+        params = {
+            "semcode": semcode,
+            "day_id": day_id,
+            "pair": pair,
+            "kind": kind,
+            "worktype": worktype,
+            "disc_id": disc_id,
+            "timestart": timestart_hm,
+            "timeend": timeend_hm,
+        }
+        rasp18_id = self.get_id(table_name, params)
+        if rasp18_id is not None:
             return rasp18_id
 
-        # если не сказано выполнять запрос, то возвращаем его
-        return query
+        query = f"""
+                INSERT INTO {table_name} 
+                (semcode, day_id, pair, kind, worktype, disc_id, timestart, timeend)
+                VALUES 
+                ({semcode}, {day_id}, {pair}, {kind}, {worktype}, 
+                {disc_id}, '{timestart_hm}', '{timeend_hm}')
+                ON CONFLICT DO NOTHING RETURNING id;"""
+        rasp18_id = self.send_request(query, True)
+        return rasp18_id
 
     def set_rasp18_groups(self, rasp18_id: int, group_id: int, subgroup: int):
         """Таблица сооветствия групп и пары в 18 недельном  расписании"""
         table_name = "sc_rasp18_groups"
 
         # у одной группы не может быть 2 пары одновременно
-        params = {
-            "rasp18_id": rasp18_id,
-            "group_id": group_id,
-            "subgroup": subgroup
-        }
+        params = {"rasp18_id": rasp18_id, "group_id": group_id, "subgroup": subgroup}
         rasp18_groups_id = self.get_id(table_name, params)
         if rasp18_groups_id is not None:
             return rasp18_groups_id
@@ -353,10 +413,7 @@ class Database:
         if prep_id == "null" or prep_id is None:
             return None
 
-        params = {
-            "rasp18_id": rasp18_id,
-            "prep_id": prep_id
-        }
+        params = {"rasp18_id": rasp18_id, "prep_id": prep_id}
         rasp18_preps_id = self.get_id(table_name, params)
         if rasp18_preps_id is not None:
             return rasp18_preps_id
@@ -372,10 +429,7 @@ class Database:
         """Таблица сооветсвия групп и пары в 18 недельном  расписании"""
         table_name = "sc_rasp18_rooms"
 
-        params = {
-            "rasp18_id": rasp18_id,
-            "room": room
-        }
+        params = {"rasp18_id": rasp18_id, "room": room}
         rasp18_rooms_id = self.get_id(table_name, params)
         if rasp18_rooms_id is not None:
             return rasp18_rooms_id
@@ -453,9 +507,17 @@ class Database:
         # - 0-пр, 1-лк, 2-лб
         # - 10-конс, 11-экз, 12-зaч, 13-зaч-д
         # - 14-кр, 15-кп
-        worktypes = {"пр": 0, "лк": 1, "лб": 2,
-                     "конс": 10, "экз": 11, "зач": 12, "зач-д": 13,
-                     "кр": 14, "кп": 15}
+        worktypes = {
+            "пр": 0,
+            "лк": 1,
+            "лб": 2,
+            "конс": 10,
+            "экз": 11,
+            "зач": 12,
+            "зач-д": 13,
+            "кр": 14,
+            "кп": 15,
+        }
         table_name = "sc_worktypes"
 
         # проверка на наличие такой таблицы
@@ -466,7 +528,8 @@ class Database:
         query = ""
         for wt_name, wt_id in worktypes.items():
             already_exists = self.row_exists(
-                table_name, {"id": wt_id, "title": wt_name})
+                table_name, {"id": wt_id, "title": wt_name}
+            )
             if not already_exists:
                 query += f"INSERT INTO {table_name} (id, title) VALUES({wt_id},\
                         '{wt_name}') ON CONFLICT DO NOTHING;"

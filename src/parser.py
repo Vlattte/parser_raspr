@@ -136,16 +136,19 @@ class VegaRaspParser:
         # -----------------------------------------------------------------
         # вытаскиваем все нужное из заголовка
         self.fill_rasp_title_parts(max_row, ws)
-
         # заполняем дни таблицы rasp18_days
         self.db.fill_rasp18_for_period(self.semcode, self.start_date, self.end_date)
+        # очистка данных расписания в период между заданными в конфиге датами
+        # self.db.clear_rasp_data_between_weeks(
+        #     semcode=self.semcode, is_semestr=default_rasp
+        # )
         # ---------------Парсим расписание в цикле по группам--------------
+        merged_cells = ws.merged_cells
         for col in range(min_col, max_col + 1):
             group_name = ws.cell(self.group_row, col).value
             # если заголовок столбца пустой, пропускаем
             if not group_name:
                 continue
-            merged_cells = ws.merged_cells
             if default_rasp:
                 self.parse_default_col(col, ws, max_row, group_name, merged_cells)
             else:
@@ -220,7 +223,7 @@ class VegaRaspParser:
             cur_color = ws.cell(row, col).fill.start_color.rgb
             department_id = self.get_dep_id(cel_color=cur_color)
 
-            # если смешаная клетка
+            # если в строке нет номера пары
             if cur_order is not None:
                 order = cur_order
 
@@ -312,7 +315,7 @@ class VegaRaspParser:
             else:
                 exam_date += "." + str(self.end_year)
 
-            week_strs = ListData.WEEK_STRS.value    
+            week_strs = ListData.WEEK_STRS.value
             weekday_num = week_strs.index(weekday.upper())
             week = self.db.get_week_by_date(exam_date)
             worktype = utils.get_worktype(exam_type)
@@ -473,7 +476,7 @@ class VegaRaspParser:
         )
 
         # таблица расписания
-        week_strs = ListData.WEEK_STRS.value    
+        week_strs = ListData.WEEK_STRS.value
         weekday_num = week_strs.index(weekday)
         rasp7_id = self.db.set_rasp7(
             semcode=self.semcode,
@@ -537,7 +540,7 @@ class VegaRaspParser:
     ):
         """Заполнение rasp18 для дисциплины на до конца семестра"""
         week_strs = ListData.WEEK_STRS.value
-        
+
         day_order = (week_strs.index(weekday) - 1) % 7
         first_day = datetime.strptime(self.start_date, "%Y-%m-%d").date()
         weekday_delta = abs(day_order - first_day.weekday())
