@@ -74,6 +74,12 @@ class VegaRaspParser:
         self.end_date = getenv("END_DATE")
         if self.start_date is None or self.end_date is None:
             raise ValueError("Добавьте даты начала и конца семестра")
+        
+        self.overwrite_day_start = getenv("OVERWRITE_DAY_START")
+        self.overwrite_day_end = getenv("OVERWRITE_DAY_END")
+        if self.overwrite_day_start is None or self.overwrite_day_end is None:
+            self.overwrite_day_start = getenv("START_DATE")
+            self.overwrite_day_end = getenv("END_DATE")
 
         # код семестра расписания
         self.semcode = 0
@@ -132,16 +138,16 @@ class VegaRaspParser:
         # ------------------Определяем границы расписания------------------
         min_col = ws.min_column
         max_col = ws.max_column
-        max_row = self.get_max_row(ws)
+        max_row = utils.get_max_row(ws)
         # -----------------------------------------------------------------
         # вытаскиваем все нужное из заголовка
         self.fill_rasp_title_parts(max_row, ws)
         # заполняем дни таблицы rasp18_days
         self.db.fill_rasp18_for_period(self.semcode, self.start_date, self.end_date)
         # очистка данных расписания в период между заданными в конфиге датами
-        # self.db.clear_rasp_data_between_weeks(
-        #     semcode=self.semcode, is_semestr=default_rasp
-        # )
+        self.db.clear_rasp_data_between_weeks(
+            semcode=self.semcode, is_semestr=default_rasp
+        )
         # ---------------Парсим расписание в цикле по группам--------------
         merged_cells = ws.merged_cells
         for col in range(min_col, max_col + 1):
@@ -153,29 +159,6 @@ class VegaRaspParser:
                 self.parse_default_col(col, ws, max_row, group_name, merged_cells)
             else:
                 self.parse_exam_col(col, ws, max_row, group_name)
-
-    def get_max_row(self, ws):
-        """Находим последнюю значимую строку"""
-        max_row = ws.max_row
-        max_col = ws.max_column
-        legend_pattern = r"(\w)*егенд[\w\s]*"
-
-        for row in range(max_row, 1, -1):
-            for col in range(max_col, 1, -1):
-                cur_cell = ws.cell(row, col).value
-                if cur_cell is None:
-                    continue
-                # если нашли строку со словом "легенда", то далее ищем первую значимую строку
-                if fullmatch(legend_pattern, ws.cell(row, col).value):
-                    max_row = row
-                    break
-            if max_row != ws.max_row:
-                break
-
-        for row in range(max_row - 1, 1, -1):
-            if not utils.is_hsplitter(ws, row):
-                return row
-        return max_row
 
     def parse_default_col(self, col, ws, max_row, group_name, merged_cells):
         """Разбор колонки группы"""
@@ -336,6 +319,18 @@ class VegaRaspParser:
             rasp18_days_id = self.db.set_rasp18_days(
                 semcode=self.semcode, day=exam_date, weekday=weekday_num, week=week
             )
+            # если вне рабочего промежутка, не пишем больше
+            # TODO вынести в self
+            first_day = datetime.strptime(self.overwrite_day_start, "%Y-%m-%d").date() 
+            last_day = datetime.strptime(self.overwrite_day_end, "%Y-%m-%d").date()
+            cur_date = datetime.strptime(exam_date, "%Y-%m-%d").date()
+            if cur_date > last_day:
+                print(f"Парсер закончил на дате: {cur_date}")
+                break
+            # если не дошли до нужной даты
+            if cur_date < first_day:
+                continue
+            
             # set_rasp18
             rasp18_id = self.db.set_rasp18(
                 semcode=self.semcode,
@@ -346,7 +341,12 @@ class VegaRaspParser:
                 disc_id=disc_id,
                 timestart=str(time_start),
                 timeend=str(time_end),
+                group_id=group_id,
+                subgroup=0,
             )
+            if rasp18_id is None:
+                return
+
             # set_rasp18_groups
             self.db.set_rasp18_groups(
                 rasp18_id=rasp18_id, group_id=group_id, subgroup=0
@@ -513,36 +513,16 @@ class VegaRaspParser:
 
         # заполнение аудиторий
         self.db.set_rasp7_rooms(rasp7_id=rasp7_id, room=room)
-        # заполнение таблиц rasp18
-        self.fill_rasp18_for_disc(
-            lesson_parts["weeks_list"],
-            weekday,
-            order,
-            lesson_parts["worktype"],
-            disc_id,
-            prep_id,
-            room,
-            group_id,
-            lesson_parts["sub_group"],
-        )
-
-    def fill_rasp18_for_disc(
-        self,
-        weeksarray,
-        weekday,
-        order,
-        worktype,
-        disc_id,
-        prep_id,
-        room,
-        group_id,
-        subgroup,
-    ):
-        """Заполнение rasp18 для дисциплины на до конца семестра"""
+        
+        ############################
+        # заполнение таблиц rasp18 #
+        ############################
+        
         week_strs = ListData.WEEK_STRS.value
 
         day_order = (week_strs.index(weekday) - 1) % 7
         first_day = datetime.strptime(self.start_date, "%Y-%m-%d").date()
+        last_day = datetime.strptime(self.end_date, "%Y-%m-%d").date()
         weekday_delta = abs(day_order - first_day.weekday())
 
         weekday_num = week_strs.index(weekday)
@@ -552,15 +532,22 @@ class VegaRaspParser:
             "weekday": weekday_num,
             "week": 1,
         }
-        for week in weeksarray:
+        for week in lesson_parts["weeks_list"]:
             # считаем дату пары
             cur_delta = weekday_delta + (week - 1) * 7
             cur_date = first_day + timedelta(days=cur_delta)
             params["week"] = week
             params["day"] = str(cur_date)
+            
+            # если вне рабочего промежутка, не пишем больше
+            if cur_date > last_day:
+                print(f"Парсер закончил на дате: {cur_date}")
+                break
 
             # смотрим id дня
             day_id = self.db.get_id(table_name="sc_rasp18_days", params=params)
+            if day_id is None:
+                print()
             # время пары
             time_start = utils.get_time_by_order(order)
             time_end = utils.time_in_90_minutes(time_start)
@@ -570,17 +557,21 @@ class VegaRaspParser:
                 day_id=day_id,
                 pair=order,
                 kind=0,
-                worktype=worktype,
+                worktype=lesson_parts["worktype"],
                 disc_id=disc_id,
                 timestart=str(time_start),
                 timeend=str(time_end),
+                group_id=group_id,
+                subgroup=lesson_parts["sub_group"]
             )
+            if rasp18_id is None:
+                return
 
-            self.db.set_rasp18_groups(rasp18_id, group_id, subgroup)
+            self.db.set_rasp18_groups(rasp18_id, group_id, lesson_parts["sub_group"])
             if prep_id is not None:
                 self.db.set_rasp18_preps(rasp18_id, prep_id)
             if room is not None:
-                self.db.set_rasp18_rooms(rasp18_id, room)
+                self.db.set_rasp18_rooms(rasp18_id, room)      
 
     def fill_rasp_title_parts(self, max_row: int, ws):
         """
@@ -646,10 +637,14 @@ class VegaRaspParser:
             case "FFD1F3FF":  # Для всех, ведут другие кафедры
                 department_name = "другая"
             # белый/без заливки
-            case "0":
+            case 0:
                 department_name = "другая"
             case "00000000":
-                department_name = "пустая"
+                department_name = "другая"
+            case _:
+                print(f"Новый цвет кафедры: {cel_color}")
+                department_name = "другая"
+                
 
         dep_params = {"title": department_name}
         department_id = self.db.get_id("sc_department", dep_params)

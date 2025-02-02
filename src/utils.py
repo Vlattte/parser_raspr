@@ -8,6 +8,29 @@ from datetime import datetime, time
 from src.structs import ListData
 
 
+def get_max_row(ws):
+    """Находим последнюю значимую строку"""
+    max_row = ws.max_row
+    max_col = ws.max_column
+    legend_pattern = r"(\w)*егенд[\w\s]*"
+
+    for row in range(max_row, 1, -1):
+        for col in range(max_col, 1, -1):
+            cur_cell = ws.cell(row, col).value
+            if cur_cell is None:
+                continue
+            # если нашли строку со словом "легенда", то далее ищем первую значимую строку
+            if fullmatch(legend_pattern, ws.cell(row, col).value):
+                max_row = row
+                break
+        if max_row != ws.max_row:
+            break
+
+    for row in range(max_row - 1, 1, -1):
+        if not is_hsplitter(ws, row):
+            return row
+    return max_row
+
 def get_lesson_type(lesson: str) -> str:
     """Вытащить тип пары (лк, пр, лб)"""
     lesson_type = "пр"

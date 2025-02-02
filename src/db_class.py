@@ -9,7 +9,7 @@ from datetime import timedelta
 from psycopg2 import connect
 from psycopg2 import Error
 from dotenv import load_dotenv
-from progress.counter import Stack
+from progress.bar import PixelBar
 
 
 class Database:
@@ -247,12 +247,6 @@ class Database:
     def clear_rasp_data_between_weeks(self, semcode: int, is_semestr: bool):
         """Очистка промежутка недель от данных, чтобы в них залить новую версию
         Затрагивает таблицы, которые зависят от rasp18_id и саму sc_rasp18"""
-        # включает в себя пр, лк, лб
-        worktype_clause = "< 3"
-        if not is_semestr:
-            # включает в себя экз, зач, зач-д, к/р, к/п
-            worktype_clause = "> 9"
-
         overwrite_day_start = getenv("OVERWRITE_DAY_START")
         overwrite_day_end = getenv("OVERWRITE_DAY_END")
         if overwrite_day_start is None or overwrite_day_end is None:
@@ -261,6 +255,12 @@ class Database:
             )
             overwrite_day_start = getenv("START_DATE")
             overwrite_day_end = getenv("END_DATE")
+
+        # включает в себя пр, лк, лб
+        worktype_clause = "< 3"
+        if not is_semestr:
+            # включает в себя экз, зач, зач-д, к/р, к/п
+            worktype_clause = "> 9"
 
         day_params = {"semcode": semcode, "day": overwrite_day_start}
         start_day_id = self.get_id("sc_rasp18_days", day_params)
@@ -277,7 +277,7 @@ class Database:
         return_ids = [day_id[0] for day_id in return_ids if day_id is not None]
 
         del_r18_where_clause = f"""WHERE rasp18_id IN 
-        ({" ".join(str(rasp18_id) for rasp18_id in return_ids)});"""
+        ({", ".join(str(rasp18_id) for rasp18_id in return_ids)});"""
 
         del_r18_groups = f"DELETE FROM sc_rasp18_groups {del_r18_where_clause}"
         self.send_request(del_r18_groups)
@@ -303,7 +303,7 @@ class Database:
                 "Начальная дата позже конечной, измените файл конфигурации"
             )
 
-        fill_days_bar = Stack("Заполнение rasp18_days", max=duration.days)
+        fill_days_bar = PixelBar("Заполнение rasp18_days", max=duration.days)
         fill_days_bar.check_tty = False
         fill_days_bar.start()
 
@@ -347,6 +347,8 @@ class Database:
         disc_id: int,
         timestart: str,
         timeend: str,
+        group_id: int, 
+        subgroup: int
     ):
         """
         kind integer  -- 0обычное,1перенос,2повтор
@@ -358,9 +360,15 @@ class Database:
         # быть две пары одновременно
         table_name = "sc_rasp18"
 
+        if day_id == "None":
+            raise ValueError("Ошибка выбора дат! Невозможно продолжать парсинг, устраните ошибка с параметрами START_DATE и END_DATE")
+
         # только часы и минуты, секунды образаем
         timestart_hm = timestart[:-3]
         timeend_hm = timeend[:-3]
+
+        # if self.is_pair_in_rasp18_exists(semcode, day_id, pair, group_id, subgroup):
+        #     return None
 
         # если такая пара уже записана, то другие таблицы
         # будут ссылаться на одинаковый rasp18_id
@@ -387,6 +395,24 @@ class Database:
                 ON CONFLICT DO NOTHING RETURNING id;"""
         rasp18_id = self.send_request(query, True)
         return rasp18_id
+
+    def is_pair_in_rasp18_exists(self,
+        semcode: int,
+        day_id: int,
+        pair: int,
+        group_id: int,
+        subgroup: int):
+        """Проверяет есть ли такая пара y выбранной группы"""
+        r18_id_query = f"""
+        SELECT r18_g.id
+        FROM sc_rasp18_groups r18_g
+        INNER JOIN sc_rasp18 r18 ON r18.id = r18_g.rasp18_id
+        WHERE r18.semcode = {semcode} AND r18.day_id = {day_id} AND 
+        r18.pair = {pair} AND r18_g.group_id = {group_id} AND r18_g.subgroup = {subgroup};"""
+        rasp18_id=self.send_request(query=r18_id_query, is_return=True)
+        if rasp18_id is None:
+            return False
+        return True
 
     def set_rasp18_groups(self, rasp18_id: int, group_id: int, subgroup: int):
         """Таблица сооветствия групп и пары в 18 недельном  расписании"""
