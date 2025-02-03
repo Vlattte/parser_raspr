@@ -1,7 +1,30 @@
 """Вспомогательные структуры"""
 
 from enum import Enum
+from dataclasses import dataclass
 from openpyxl.styles.colors import Color
+
+@dataclass
+class CmdParams:
+    """Параметры командной строки, тоже самое, что в .env"""   
+    # очистка ВСЕХ таблиц перед запуском
+    pre_clear: bool = False
+
+    # файлы для парсинга
+    sem_filename: str = None
+    session_filename: str = None
+
+    # даты для заполнения sc_rasp18_days
+    # start_date СОВПАДАЕТ с первым днем первой недели
+    start_date: str = None
+    end_date: str = None
+
+    # первый день учебы магистров
+    magic_start_date: str = None
+
+    # промежуток, который нужно перезаписать
+    overwrite_date_start: str = None
+    overwrite_date_end: str = None
 
 
 class CellColors(Enum):

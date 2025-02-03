@@ -19,7 +19,11 @@ from dotenv import load_dotenv
 # custom
 from src import utils
 from src.db_class import Database
+
+from src.structs import CmdParams
 from src.structs import ListData
+
+
 
 WEEKS = 17
 AUTUMN_SUBSTR = "осен"
@@ -28,20 +32,72 @@ WINTER_SUBSTR = "зимн"
 SUMMER_SUBSTR = "летн"
 
 
-# TODO прогресс бар как декоратор
 class VegaRaspParser:
     """Парсер excel расписания"""
 
-    def __init__(self) -> None:
-        self.db = Database()
-        # тип файла для парсинга
-        load_dotenv()
-        self.default_filename = getenv("DEFAULT_FILENAME")
-        self.session_filename = getenv("SESSION_FILENAME")
+    def __init__(self, cmd_params: CmdParams) -> None:
+        # очищаем ли базу
+        pre_clear = False
+        overwrite_day_start = None
+        overwrite_day_end = None
+        if cmd_params is None:
+            load_dotenv()
+            pre_clear = getenv("PRE_CLEAR")
+            pre_clear = bool(int(pre_clear))
+            # файлы для парсинга
+            self.default_filename = getenv("DEFAULT_FILENAME")
+            self.session_filename = getenv("SESSION_FILENAME")
+            # дата начала и конца семестра
+            self.start_date = getenv("START_DATE")
+            self.end_date = getenv("END_DATE")
+            # период для перезаписи расписания
+            overwrite_day_start = getenv("OVERWRITE_DAY_START")
+            overwrite_day_end = getenv("OVERWRITE_DAY_END")
+            # первый день обучения магистров
+            self.magic_first_stud_date = getenv("MAGIC_START_DATE")
+        else:
+            pre_clear = cmd_params.pre_clear
+            # файлы для парсинга
+            self.default_filename = cmd_params.sem_filename
+            self.session_filename = cmd_params.session_filename
+            # дата начала и конца семестра
+            self.start_date = cmd_params.start_date
+            self.end_date = cmd_params.end_date
+            # период для перезаписи расписания
+            overwrite_day_start = cmd_params.overwrite_date_start
+            overwrite_day_end = cmd_params.overwrite_date_end
+            # первый день обучения магистров
+            self.magic_first_stud_date = cmd_params.magic_start_date 
 
         self.is_default = False
         self.is_session = False
+        self.remember_existing_filenames()
 
+        self.first_day = None
+        self.last_day = None
+        self.fill_dates(overwrite_day_start, overwrite_day_end)
+
+        # общие позиции колонок и строк
+        self.group_row = 2
+        self.weekday_col = 1
+        self.para_col = 2
+
+        # позиция ячейки с версией
+        self.version_col = 1
+        self.version = 0
+
+        # код семестра расписания
+        self.semcode = 192000
+
+        # Год начала и конца обучения
+        self.start_year = datetime.now().year
+        self.end_year = self.start_year + 1
+
+        # инициализация класса работы с БД
+        self.db = Database(pre_clear)
+
+    def remember_existing_filenames(self):
+        """Выбран ли хотя бы один файл, если выбран, запомнить какой(ие)"""
         if self.default_filename is None and self.session_filename is None:
             raise ValueError("Не выбран ни один файл для парсинга")
 
@@ -59,41 +115,22 @@ class VegaRaspParser:
                 )
             self.is_session = True
 
-        self.group_row = 2
-        self.weekday_col = 1
-        self.para_col = 2
-
-        # позиция ячейки с версией
-        self.version_col = 1
-        self.version = 0
-
-        # дата начала и конца семестра
-        self.start_date = getenv("START_DATE")
-        self.end_date = getenv("END_DATE")
+    def fill_dates(self, overwrite_day_start, overwrite_day_end):
+        """Проверка и заполнение нужных дат"""
         if self.start_date is None or self.end_date is None:
             raise ValueError("Добавьте даты начала и конца семестра")
 
         # первый день обучения для магистров (не задан -> будет как у всех)
-        self.magic_first_stud_date = getenv("MAGIC_START_DATE")
         if self.magic_first_stud_date is None:
             self.magic_first_stud_date = self.start_date
         self.magic_first_stud_date = datetime.strptime(self.magic_first_stud_date, "%Y-%m-%d").date()
 
-        overwrite_day_start = getenv("OVERWRITE_DAY_START")
-        overwrite_day_end = getenv("OVERWRITE_DAY_END")
         if overwrite_day_start is None or overwrite_day_end is None:
-            overwrite_day_start = getenv("START_DATE")
-            overwrite_day_end = getenv("END_DATE")
+            overwrite_day_start = self.start_date
+            overwrite_day_end = self.end_date
         # день начала и конца записи в БД, остальное не трогаем
         self.first_day = datetime.strptime(overwrite_day_start, "%Y-%m-%d").date()
         self.last_day = datetime.strptime(overwrite_day_end, "%Y-%m-%d").date()
-
-        # код семестра расписания
-        self.semcode = 0
-
-        # Год начала и конца обучения
-        self.start_year = datetime.now().year
-        self.end_year = self.start_year + 1
 
     def change_to_session_params(self):
         """Меняет некоторые стандартные параметры на параметры расписания сессии"""
@@ -153,7 +190,8 @@ class VegaRaspParser:
         self.db.fill_rasp18_for_period(self.semcode, self.start_date, self.end_date)
         # очистка данных расписания в период между заданными в конфиге датами
         self.db.clear_rasp_data_between_weeks(
-            semcode=self.semcode, is_semestr=default_rasp
+            semcode=self.semcode, is_semestr=default_rasp,
+            start_date=self.first_day, end_date=self.last_day
         )
         # ---------------Парсим расписание в цикле по группам--------------
         merged_cells = ws.merged_cells
@@ -178,15 +216,15 @@ class VegaRaspParser:
         # проходимся по текущему столбцу по всем строкам
         row = self.group_row + 1
 
-        progress_bar = PixelBar(group_name, max=max_row - row, suffix="%(percent)d%%")
-        progress_bar.check_tty = False
-        progress_bar.start()
+        # progress_bar = PixelBar(group_name, max=max_row - row, suffix="%(percent)d%%")
+        # progress_bar.check_tty = False
+        # progress_bar.start()
 
         # магисторская группа или нет
         is_magic = utils.is_magic_group(group_name)
 
         while row < max_row:
-            progress_bar.next()
+            # progress_bar.next()
 
             weekday = ws.cell(row, self.weekday_col).value
             # если новый день недели
@@ -237,7 +275,7 @@ class VegaRaspParser:
 
             # переходим к новой паре
             row += 1
-        progress_bar.finish()
+        # progress_bar.finish()
 
     def parse_exam_col(self, col, ws, max_row, group_cell):
         """Разбор колонки расписания экзаменов"""
@@ -252,9 +290,9 @@ class VegaRaspParser:
         prev_date_cell = None
         row = self.group_row + 2
 
-        progress_bar = PixelBar(group_name, max=max_row - row, suffix="%(percent)d%%")
-        progress_bar.check_tty = False
-        progress_bar.start()
+        # progress_bar = PixelBar(group_name, max=max_row - row, suffix="%(percent)d%%")
+        # progress_bar.check_tty = False
+        # progress_bar.start()
 
         # проходимся по текущему столбцу по всем строкам
         prev_weekday = "ПН"
@@ -281,13 +319,13 @@ class VegaRaspParser:
                 # если только эта строка пустая, то это разделитель
                 is_splitter_row = utils.is_hsplitter(ws, row)
                 if is_splitter_row:
-                    progress_bar.next()
+                    # progress_bar.next()
                     row += 1
                     continue
 
                 # если все ячейки данных по экзамену пустые
                 if lesson_name is None and teacher is None:
-                    progress_bar.next(3)
+                    # progress_bar.next(3)
                     row += 3
                     continue
 
@@ -309,9 +347,6 @@ class VegaRaspParser:
             else:
                 exam_date += "." + str(self.end_year)
 
-            week_strs = ListData.WEEK_STRS.value
-            weekday_num = week_strs.index(weekday.upper())
-            week = self.db.get_week_by_date(exam_date)
             worktype = utils.get_worktype(exam_type)
             cur_color = ws.cell(row, col + 1).fill.start_color.index
             department_id = self.get_dep_id(cel_color=cur_color)
@@ -326,22 +361,22 @@ class VegaRaspParser:
                     varmask="null",
                 )
 
-            # если новый день, то добавляем
-            rasp18_days_id = self.db.set_rasp18_days(
-                semcode=self.semcode, day=exam_date, weekday=weekday_num, week=week
-            )
-            # если вне рабочего промежутка, не пишем больше
             cur_date = datetime.strptime(exam_date, "%d.%m.%Y").date()
+
+            # если вне рабочего промежутка, не пишем больше
             if cur_date > self.last_day:
                 break
             # если не дошли до нужной даты
             if cur_date < self.first_day:
                 continue
 
+            params = {"day": cur_date, "semcode": self.semcode}
+            day_id = self.db.get_id(table_name="sc_rasp18_days", params=params)
+
             # set_rasp18
             rasp18_id = self.db.set_rasp18(
                 semcode=self.semcode,
-                day_id=rasp18_days_id,
+                day_id=day_id,
                 pair=cur_order,
                 kind=0,
                 worktype=worktype,
@@ -372,10 +407,10 @@ class VegaRaspParser:
                 self.db.set_rasp18_rooms(rasp18_id=rasp18_id, room=room)
 
             # пропускаем уже разобранные ячейки экзамена
-            progress_bar.next(3)
+            # progress_bar.next(3)
             row += 3
 
-        progress_bar.finish()
+        # progress_bar.finish()
 
     def get_lesson_parts(self, lesson_cell: str, is_magic: bool) -> dict:
         """
@@ -576,8 +611,6 @@ class VegaRaspParser:
 
             # смотрим id дня
             day_id = self.db.get_id(table_name="sc_rasp18_days", params=params)
-            if day_id is None:
-                print()
             # время пары
             time_start = utils.get_time_by_order(order)
             time_end = utils.time_in_90_minutes(time_start)

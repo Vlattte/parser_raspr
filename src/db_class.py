@@ -15,7 +15,7 @@ from progress.bar import PixelBar
 class Database:
     """Класс работы в БД"""
 
-    def __init__(self, is_dump=True) -> None:
+    def __init__(self, pre_clear: bool = None) -> None:
         """Инициализирует БД"""
         super().__init__()
 
@@ -25,23 +25,15 @@ class Database:
         self.db_user = getenv("DB_USER")
         self.db_password = getenv("DB_PASSWORD")
         self.db_port = getenv("DB_PORT")
-        self.is_dump = getenv("DB_DUMP")
-        self.is_pre_clear = getenv("PRE_CLEAR")
-
-        # если не заполнили
-        if self.is_dump is None:
-            self.is_dump = is_dump
-        else:
-            self.is_dump = bool(self.is_dump)
+        self.is_pre_clear = pre_clear
 
         self.requests_file_name = "sql_scripts/sql_dump.sql"
 
         self.conn = None
         self.cur = None
-        self.sql_requests = None
 
         # очищать ли базу перед работой
-        if int(self.is_pre_clear) == 1:
+        if self.is_pre_clear:
             self.set_conn()
             self.__clear_tables()
             print("<--TABLES CLEARED-->")
@@ -50,8 +42,6 @@ class Database:
     def set_conn(self):
         """Установка соединения"""
         try:
-            self.sql_requests = open(self.requests_file_name, "w", encoding="utf-8")
-
             self.conn = connect(
                 database=self.db_name,
                 user=self.db_user,
@@ -70,10 +60,6 @@ class Database:
 
     def close_conn(self):
         """Закрыть соединение с базой"""
-        # если файл открыт, закрываем
-        if self.sql_requests:
-            self.sql_requests.close()
-
         # если соединение открыто, закрываем
         if self.conn:
             self.cur.close()
@@ -83,10 +69,6 @@ class Database:
         """отправка запроса query и возврат данных, если is_return == True"""
         try:
             self.cur.execute(query)
-
-            # записываем историю запросов
-            if "select" not in query.lower() and self.is_dump:
-                self.sql_requests.write(query)
 
             if is_return:
                 return_data = self.cur.fetchall()
@@ -244,36 +226,23 @@ class Database:
         rasp7_rooms_id = self.send_request(query, True)
         return rasp7_rooms_id
 
-    def clear_rasp_data_between_weeks(self, semcode: int, is_semestr: bool):
+    def clear_rasp_data_between_weeks(self, semcode: int, is_semestr: bool, start_date: datetime, end_date: datetime):
         """Очистка промежутка недель от данных, чтобы в них залить новую версию
         Затрагивает таблицы, которые зависят от rasp18_id и саму sc_rasp18"""
-        overwrite_day_start = getenv("OVERWRITE_DAY_START")
-        overwrite_day_end = getenv("OVERWRITE_DAY_END")
-        if overwrite_day_start is None or overwrite_day_end is None:
-            rasp_type = "семетра"
-            if not is_semestr:
-                rasp_type = "экзаменов"
-            print(
-                f"Расписание {rasp_type} с кодом {semcode} будет переписано целиком!!!"
-            )
-            overwrite_day_start = getenv("START_DATE")
-            overwrite_day_end = getenv("END_DATE")
-
         # включает в себя пр, лк, лб
         worktype_clause = "< 3"
         if not is_semestr:
             # включает в себя экз, зач, зач-д, к/р, к/п
             worktype_clause = "> 9"
 
-        day_params = {"semcode": semcode, "day": overwrite_day_start}
+        day_params = {"semcode": semcode, "day": start_date}
         start_day_id = self.get_id("sc_rasp18_days", day_params)
-        day_params = {"semcode": semcode, "day": overwrite_day_end}
+        day_params = {"semcode": semcode, "day": end_date}
         end_day_id = self.get_id("sc_rasp18_days", day_params)
 
-        date_overwrite_start = datetime.strptime(overwrite_day_start, "%Y-%m-%d").date()
-        date_overwrite_end = datetime.strptime(overwrite_day_end, "%Y-%m-%d").date()
-        if date_overwrite_start > date_overwrite_end or start_day_id is None or end_day_id is None:
-            raise ValueError("Ошибка параметров OVERWRITE_DAY")
+        if start_date > end_date or \
+             start_day_id is None or end_day_id is None:
+            raise ValueError(f"Ошибка параметров OVERWRITE_DAY: начало {start_date}, конец {end_date}")
 
         query = f"""DELETE FROM sc_rasp18
         where semcode = {semcode} AND worktype {worktype_clause}  
@@ -311,9 +280,9 @@ class Database:
                 "Начальная дата позже конечной, измените файл конфигурации"
             )
 
-        fill_days_bar = PixelBar("Заполнение rasp18_days", max=duration.days)
-        fill_days_bar.check_tty = False
-        fill_days_bar.start()
+        # fill_days_bar = PixelBar("Заполнение rasp18_days", max=duration.days)
+        # fill_days_bar.check_tty = False
+        # fill_days_bar.start()
 
         date = datetime.strptime(start_date, "%Y-%m-%d").date()
         cur_week = 1
@@ -325,8 +294,8 @@ class Database:
             date += timedelta(days=1)
             if date.weekday() == 0:  # если новый понедельник
                 cur_week += 1
-            fill_days_bar.next()
-        fill_days_bar.finish()
+        #     fill_days_bar.next()
+        # fill_days_bar.finish()
 
     def set_rasp18_days(self, semcode: int, day: str, weekday: int, week: int):
         """Таблица соответствия дня в неделе и даты"""
