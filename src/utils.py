@@ -260,3 +260,10 @@ def get_disc_name(lesson: str, lesson_parts: dict) -> str:
     disc_name = disc_name.removesuffix(" ")
 
     return disc_name
+
+def is_magic_group(group_name: str):
+    """Группа магистров или нет"""
+    if "КММО" in group_name:
+        print("МАГИ, ААА")
+        return True
+    return False

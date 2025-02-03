@@ -250,8 +250,11 @@ class Database:
         overwrite_day_start = getenv("OVERWRITE_DAY_START")
         overwrite_day_end = getenv("OVERWRITE_DAY_END")
         if overwrite_day_start is None or overwrite_day_end is None:
+            rasp_type = "семетра"
+            if not is_semestr:
+                rasp_type = "экзаменов"
             print(
-                f"Расписание для семестра с кодом {semcode} будет переписано целиком!!!"
+                f"Расписание {rasp_type} с кодом {semcode} будет переписано целиком!!!"
             )
             overwrite_day_start = getenv("START_DATE")
             overwrite_day_end = getenv("END_DATE")
@@ -266,6 +269,11 @@ class Database:
         start_day_id = self.get_id("sc_rasp18_days", day_params)
         day_params = {"semcode": semcode, "day": overwrite_day_end}
         end_day_id = self.get_id("sc_rasp18_days", day_params)
+
+        date_overwrite_start = datetime.strptime(overwrite_day_start, "%Y-%m-%d").date()
+        date_overwrite_end = datetime.strptime(overwrite_day_end, "%Y-%m-%d").date()
+        if date_overwrite_start > date_overwrite_end or start_day_id is None or end_day_id is None:
+            raise ValueError("Ошибка параметров OVERWRITE_DAY")
 
         query = f"""DELETE FROM sc_rasp18
         where semcode = {semcode} AND worktype {worktype_clause}  
@@ -347,8 +355,8 @@ class Database:
         disc_id: int,
         timestart: str,
         timeend: str,
-        group_id: int, 
-        subgroup: int
+        group_id: int = 0,
+        subgroup: int = 0
     ):
         """
         kind integer  -- 0обычное,1перенос,2повтор
@@ -360,8 +368,8 @@ class Database:
         # быть две пары одновременно
         table_name = "sc_rasp18"
 
-        if day_id == "None":
-            raise ValueError("Ошибка выбора дат! Невозможно продолжать парсинг, устраните ошибка с параметрами START_DATE и END_DATE")
+        if day_id is None:
+            raise ValueError("Ошибка в датах! Невозможно продолжать парсинг, устраните ошибки с параметрами START_DATE и END_DATE")
 
         # только часы и минуты, секунды образаем
         timestart_hm = timestart[:-3]
@@ -561,3 +569,11 @@ class Database:
                         '{wt_name}') ON CONFLICT DO NOTHING;"
         if query != "":
             self.send_request(query)
+
+    def get_week(self, day: datetime, semcode: int) -> int:
+        """Получить номер недели"""
+        query = f"""
+        SELECT week FROM sc_rasp18_days WHERE day = date('{day}') AND semcode = {semcode};
+        """
+        week = self.send_request(query=query, is_return=True)
+        return week
