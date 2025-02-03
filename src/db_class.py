@@ -359,6 +359,7 @@ class Database:
         subgroup: int = 0
     ):
         """
+        ячейка в таблице расписания
         kind integer  -- 0обычное,1перенос,2повтор
         worktype integer -– 0пр,1лк,2лб,
             -- 11экз,12зач,13зач-д,
@@ -375,25 +376,6 @@ class Database:
         timestart_hm = timestart[:-3]
         timeend_hm = timeend[:-3]
 
-        # if self.is_pair_in_rasp18_exists(semcode, day_id, pair, group_id, subgroup):
-        #     return None
-
-        # если такая пара уже записана, то другие таблицы
-        # будут ссылаться на одинаковый rasp18_id
-        params = {
-            "semcode": semcode,
-            "day_id": day_id,
-            "pair": pair,
-            "kind": kind,
-            "worktype": worktype,
-            "disc_id": disc_id,
-            "timestart": timestart_hm,
-            "timeend": timeend_hm,
-        }
-        rasp18_id = self.get_id(table_name, params)
-        if rasp18_id is not None:
-            return rasp18_id
-
         query = f"""
                 INSERT INTO {table_name} 
                 (semcode, day_id, pair, kind, worktype, disc_id, timestart, timeend)
@@ -403,24 +385,6 @@ class Database:
                 ON CONFLICT DO NOTHING RETURNING id;"""
         rasp18_id = self.send_request(query, True)
         return rasp18_id
-
-    def is_pair_in_rasp18_exists(self,
-        semcode: int,
-        day_id: int,
-        pair: int,
-        group_id: int,
-        subgroup: int):
-        """Проверяет есть ли такая пара y выбранной группы"""
-        r18_id_query = f"""
-        SELECT r18_g.id
-        FROM sc_rasp18_groups r18_g
-        INNER JOIN sc_rasp18 r18 ON r18.id = r18_g.rasp18_id
-        WHERE r18.semcode = {semcode} AND r18.day_id = {day_id} AND 
-        r18.pair = {pair} AND r18_g.group_id = {group_id} AND r18_g.subgroup = {subgroup};"""
-        rasp18_id=self.send_request(query=r18_id_query, is_return=True)
-        if rasp18_id is None:
-            return False
-        return True
 
     def set_rasp18_groups(self, rasp18_id: int, group_id: int, subgroup: int):
         """Таблица сооветствия групп и пары в 18 недельном  расписании"""
