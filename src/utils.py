@@ -27,7 +27,7 @@ def get_max_row(ws):
                 break
         if max_row is not None:
             break
-    
+
     if max_row is None:
         max_row = ws.max_row
 

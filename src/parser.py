@@ -35,7 +35,7 @@ SUMMER_SUBSTR = "летн"
 class VegaRaspParser:
     """Парсер excel расписания"""
 
-    def __init__(self, cmd_params: CmdParams) -> None:
+    def __init__(self, cmd_params: CmdParams = None) -> None:
         # очищаем ли базу
         pre_clear = False
         overwrite_day_start = None
@@ -383,8 +383,8 @@ class VegaRaspParser:
                 disc_id=disc_id,
                 timestart=str(time_start),
                 timeend=str(time_end),
-                group_id=group_id,
-                subgroup=0,
+                prep_id=prep_id,
+                room=room,
             )
             if rasp18_id is None:
                 return
@@ -624,8 +624,8 @@ class VegaRaspParser:
                 disc_id=disc_id,
                 timestart=str(time_start),
                 timeend=str(time_end),
-                group_id=group_id,
-                subgroup=lesson_parts["sub_group"]
+                prep_id=prep_id,
+                room=room,
             )
             if rasp18_id is None:
                 return
@@ -689,6 +689,8 @@ class VegaRaspParser:
             case "FFF1FF67":  #
                 department_name = "ВЕГА"
             case "FFF4FF67":  # ведет ВЕГА для всех
+                department_name = "ВЕГА"
+            case "FFF0FF29":  # ведет ВЕГА для всех
                 department_name = "ВЕГА"
             case "FFEAFF9F":  # ведет ВЕГА
                 department_name = "ВЕГА"

@@ -226,7 +226,8 @@ class Database:
         rasp7_rooms_id = self.send_request(query, True)
         return rasp7_rooms_id
 
-    def clear_rasp_data_between_weeks(self, semcode: int, is_semestr: bool, start_date: datetime, end_date: datetime):
+    def clear_rasp_data_between_weeks(self, semcode: int, is_semestr: bool, 
+                                      start_date: datetime, end_date: datetime):
         """Очистка промежутка недель от данных, чтобы в них залить новую версию
         Затрагивает таблицы, которые зависят от rasp18_id и саму sc_rasp18"""
         # включает в себя пр, лк, лб
@@ -324,8 +325,8 @@ class Database:
         disc_id: int,
         timestart: str,
         timeend: str,
-        group_id: int = 0,
-        subgroup: int = 0
+        prep_id: int,
+        room: str
     ):
         """
         ячейка в таблице расписания
@@ -344,6 +345,20 @@ class Database:
         # только часы и минуты, секунды образаем
         timestart_hm = timestart[:-3]
         timeend_hm = timeend[:-3]
+
+        if prep_id is not None and room is not None:
+            exists_query = f"""
+        SELECT r18.id FROM sc_rasp18 r18
+            INNER JOIN sc_rasp18_preps p ON r18.id = p.rasp18_id
+            INNER JOIN sc_rasp18_rooms r ON r18.id = r.rasp18_id
+        WHERE semcode = {semcode} AND day_id = {day_id} AND pair = {pair}
+            AND kind = {kind} AND worktype = {worktype} AND disc_id = {disc_id}
+            AND timestart = '{timestart_hm}' AND timeend = '{timeend_hm}'
+            AND p.prep_id = {prep_id} AND r.room = '{room}';
+        """
+            rasp18_id = self.send_request(exists_query, is_return=True)
+            if rasp18_id is not None:
+                return rasp18_id
 
         query = f"""
                 INSERT INTO {table_name} 
