@@ -10,21 +10,26 @@ from src.structs import ListData
 
 def get_max_row(ws):
     """Находим последнюю значимую строку"""
-    max_row = ws.max_row
-    max_col = ws.max_column
+    max_row = None
     legend_pattern = r"(\w)*егенд[\w\s]*"
+    kurs_pattern = r"\d курс"
 
-    for row in range(max_row, 1, -1):
-        for col in range(max_col, 1, -1):
+    for row in range(ws.max_row, 1, -1):
+        for col in range(ws.max_column, 1, -1):
             cur_cell = ws.cell(row, col).value
             if cur_cell is None:
                 continue
             # если нашли строку со словом "легенда", то далее ищем первую значимую строку
-            if fullmatch(legend_pattern, ws.cell(row, col).value):
+            legend_substr = search(legend_pattern, ws.cell(row, col).value)
+            kurs_substr = search(kurs_pattern, ws.cell(row, col).value)
+            if legend_substr is not None or kurs_substr is not None:
                 max_row = row
                 break
-        if max_row != ws.max_row:
+        if max_row is not None:
             break
+    
+    if max_row is None:
+        max_row = ws.max_row
 
     for row in range(max_row - 1, 1, -1):
         if not is_hsplitter(ws, row):
