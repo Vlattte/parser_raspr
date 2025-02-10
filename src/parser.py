@@ -266,6 +266,8 @@ class VegaRaspParser:
                 order = cur_order
 
             lesson_parts = self.get_lesson_parts(lesson_cell, is_magic)
+            # if lesson_parts["is_complex"]:
+
             # если подгруппа ВЕГИ или ВМ, то переписываем
             if group_parts["sub_group"] != -1:
                 lesson_parts["sub_group"] = group_parts["sub_group"]
@@ -435,9 +437,9 @@ class VegaRaspParser:
             "weeks_list": "null",
             "weeks_text": "null",
             "worktype": "null",
-            # "timestart": None,
-            # "timeend": None,
-            # "is_complex": False,
+            "timestart": None,
+            "timeend": None,
+            "is_complex": False,
         }
 
         # получаем тип пары (лк, пр, лб)
@@ -451,25 +453,29 @@ class VegaRaspParser:
         lesson_parts["weeks_list"] = weeks_parts["weeks_list"]
         lesson_parts["weeks_text"] = weeks_parts["weeks_text"]
 
-        # time_parts = utils.get_time_from_lesson(lesson_cell)
-        # if len(time_parts) > 0:
-        #     lesson_parts["is_complex"] = True
-        #     lesson_parts["parity"] = []
-        #     lesson_parts["weeks_list"] = []
-        #     lesson_parts["weeks_text"] = []
-        #     for t in time_parts:
-        #         # если указаны недели
-        #         if t["weeks"] is not None:
-        #             weeks_parts = utils.get_weeks_parts(t["weeks"])
-        #             lesson_parts["parity"].append(weeks_parts["parity"])
-        #             lesson_parts["weeks_list"].append(weeks_parts["weeks_list"])
-        #             lesson_parts["weeks_text"].append(weeks_parts["weeks_text"])
+        time_parts = utils.get_time_from_lesson(lesson_cell)
+        if len(time_parts) > 0:
+            lesson_parts["is_complex"] = True
+            lesson_parts["parity"] = []
+            lesson_parts["weeks_list"] = []
+            lesson_parts["weeks_text"] = []
+            lesson_parts["timestart"] = []
+            lesson_parts["timeend"] = []
+            for t in time_parts:
+                # если указаны недели
+                if t["weeks"] is not None:
+                    weeks_parts = self.get_weeks_parts(t["weeks"], is_magic)
+                    lesson_parts["parity"].append(weeks_parts["parity"])
+                    lesson_parts["weeks_list"].append(weeks_parts["weeks_list"])
+                    lesson_parts["weeks_text"].append(weeks_parts["weeks_text"])
 
-        #         # время указано всегда или сюда не зайдем
-        #         lesson_parts["timestart"].append(t["timestart"])
-        #         lesson_parts["timeend"].append(t["timeend"])
+                # время указано всегда или сюда не зайдем
+                lesson_parts["timestart"].append(t["timestart"])
+                lesson_parts["timeend"].append(t["timeend"])
 
         # удаляем лишнее и получаем название дисциплины
+        if lesson_parts["is_complex"]:
+            
         lesson_parts["disc_name"] = utils.get_disc_name(lesson_cell, lesson_parts)
 
         return lesson_parts

@@ -2,6 +2,7 @@
 
 from re import search
 from re import fullmatch
+from re import match
 from re import sub
 from re import finditer
 
@@ -15,7 +16,7 @@ from src.structs import ListData
 
 class Patterns(str, Enum):
     """Часто используемые паттерны для регулярок"""
-    WEEK_AND_TIME = r".*(\d{1,2}:\d{1,2})(\D)*(\d{1,2}:\d{1,2})"
+    WEEK_AND_TIME = r".*(\d{1,2}:\d{2})\D*(\d{2}:\d{2})"
 
 
 def get_group_parts(group_cell: str) -> dict:
@@ -265,10 +266,9 @@ def get_lesson_count(merged_cells, coord) -> int:
 
 def get_time_from_lesson(lesson_cell: str) -> list:
     """Если в названии пары есть время, вытаскиваем"""
-    return []
     time_parts = []
 
-    replace_pattern = r"\1-\3"
+    replace_pattern = r"\1-\2"
     week_pattern = r"I{1,2}н"
 
     all_times = finditer(Patterns.WEEK_AND_TIME, lesson_cell)
@@ -276,10 +276,12 @@ def get_time_from_lesson(lesson_cell: str) -> list:
         time_dict = {"timestart": None, "timeend": None, "weeks": None}
         lesson_duration = sub(Patterns.WEEK_AND_TIME, replace_pattern, t.group())
         timestart, timeend = lesson_duration.split("-")
+        weeks = search(week_pattern, t.group())
 
         time_dict["timestart"] = timestart
         time_dict["timeend"] = timeend
-        time_dict["weeks"] = search(t, week_pattern)
+        if weeks is not None:
+            time_dict["weeks"] = weeks.group()
 
         time_parts.append(time_dict)
     return time_parts
@@ -296,7 +298,7 @@ def get_week_parity(lesson: str) -> int:
 
 def get_disc_name(lesson: str, lesson_parts: dict) -> str:
     """Убрать лишнее из названия дисциплины и вернуть только само название"""
-    disc_name = lesson
+    disc_name = lesson    
 
     # убираем недели
     if lesson_parts["parity"] == 0 and len(lesson_parts["weeks_list"]) < 16:
@@ -317,7 +319,7 @@ def get_disc_name(lesson: str, lesson_parts: dict) -> str:
         disc_name = disc_name.removesuffix(sub_group_str)
 
     # убираем лишние данные про время
-    disc_name = sub(Patterns.WEEK_AND_TIME, "", disc_name)    
+    disc_name = sub(Patterns.WEEK_AND_TIME, "", disc_name)
 
     # чтобы избежать опечаток с пробелами, добавляем после всех точек пробел
 
