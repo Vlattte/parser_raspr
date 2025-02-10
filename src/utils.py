@@ -2,10 +2,39 @@
 
 from re import search
 from re import fullmatch
+from re import sub
+from re import findall
+
 from copy import deepcopy
 from datetime import datetime, time
 
 from src.structs import ListData
+
+
+def get_group_parts(group_cell: str) -> dict:
+    """Получить название и доп информацию по группе"""
+    group_name = group_cell
+    group_parts = {"course": -1, "name": "", "sub_group": 0}
+
+    # если есть подстрока с курсов, вытаскиваем
+    kurs = search(r"\d курс", group_cell)
+    if kurs is not None:
+        group_parts["course"] = kurs.group()
+        group_name = group_name.removeprefix(kurs)
+
+    # если есть подстрока с кафедрой, пишем как подгруппу
+    dep = search(r"\((\w)*\)", group_cell)
+    if dep is not None:
+        dep_name = dep.group().upper()
+        if "ВЕГА" in dep_name:
+            group_parts["sub_group"] = 1
+        elif "ВМ" in dep_name:
+            group_parts["sub_group"] = 2
+        group_name = group_name.removesuffix(dep.group())
+
+    group_name = group_name.replace(" ", "")
+    group_parts["name"] = group_name
+    return group_parts
 
 
 def get_max_row(ws):
@@ -35,6 +64,7 @@ def get_max_row(ws):
         if not is_hsplitter(ws, row):
             return row
     return max_row
+
 
 def get_lesson_type(lesson: str) -> str:
     """Вытащить тип пары (лк, пр, лб)"""
@@ -85,6 +115,7 @@ def get_stud_period(semcode: int):
         start_date = f"20{start_year}-02-07"
         end_date = f"20{end_year}-07-07"
     return start_date, end_date
+
 
 def get_order_by_time(time_start):
     """Определение номера пары по ее времени"""
@@ -201,11 +232,12 @@ def swap_with_prev_value(prev_val, cur_val):
         prev = cur
     return prev, cur
 
+
 def get_lesson_count(merged_cells, coord) -> int:
     """Если это пара как НИР или военка(смерджено около 4-5 пар), то вернуть число пар"""
     merged_range = None
     if coord in merged_cells:
-        coord_pattern = coord + r':\w+\d+'
+        coord_pattern = coord + r":\w+\d+"
         merged_cells_list = merged_cells.sorted()
         merged_range = None
         for cell_range in merged_cells_list:
@@ -215,13 +247,36 @@ def get_lesson_count(merged_cells, coord) -> int:
     if merged_range is None:
         return 1
 
-    # смотрим низкую строку, чтобы посчитать сколько нужно пар
+    # смотрим нижнюю строку, чтобы посчитать сколько нужно пар
     lesson_count = merged_range.max_row - merged_range.min_row
-    if  lesson_count > 2:
+    if lesson_count > 2:
         lesson_count += 1
         # делим на 2, так как каждая ячейка содержит четную и нечетные недели
-        return int(lesson_count/2)
+        return int(lesson_count / 2)
     return 1
+
+
+def get_time_from_lesson(lesson_cell: str) -> list:
+    """Если в названии пары есть время, вытаскиваем"""
+    time_parts = []
+
+    time_pattern = r"(\D)*(\d{1,2}:\d{1,2})(\D)*(\d{1,2}:\d{1,2})"
+    replace_pattern = r"\2-\4"
+    week_pattern = r"I{1,2}н"
+
+    all_times = findall(time_pattern, lesson_cell)
+    for t in all_times:
+        time_dict = {"timestart": None, "timeend": None, "weeks": None}
+        lesson_duration = sub(time_pattern, replace_pattern, t)
+        timestart, timeend = lesson_duration.split("-")
+
+        time_dict["timestart"] = timestart
+        time_dict["timeend"] = timeend
+        time_dict["weeks"] = search(t, week_pattern)
+
+        time_parts.append(time_dict)
+    return time_parts
+
 
 def get_week_parity(lesson: str) -> int:
     """Получить четность недели"""
@@ -230,6 +285,7 @@ def get_week_parity(lesson: str) -> int:
         if i in lesson:
             return parity_list.index(i) + 1
     return 0
+
 
 def get_disc_name(lesson: str, lesson_parts: dict) -> str:
     """Убрать лишнее из названия дисциплины и вернуть только само название"""
@@ -253,6 +309,9 @@ def get_disc_name(lesson: str, lesson_parts: dict) -> str:
         sub_group_str = subgroups[lesson_parts["sub_group"] - 1]
         disc_name = disc_name.removesuffix(sub_group_str)
 
+    # убираем лишние данные про время
+    # TODO
+
     # чтобы избежать опечаток с пробелами, добавляем после всех точек пробел
 
     # Лин. алг.и ан. геом. -> Лин.алг.и ан.геом.
@@ -265,6 +324,7 @@ def get_disc_name(lesson: str, lesson_parts: dict) -> str:
     disc_name = disc_name.removesuffix(" ")
 
     return disc_name
+
 
 def is_magic_group(group_name: str):
     """Группа магистров или нет"""

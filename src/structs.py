@@ -4,9 +4,11 @@ from enum import Enum
 from dataclasses import dataclass
 from openpyxl.styles.colors import Color
 
+
 @dataclass
 class CmdParams:
-    """Параметры командной строки, тоже самое, что в .env"""   
+    """Параметры командной строки, тоже самое, что в .env"""
+
     # очистка ВСЕХ таблиц перед запуском
     pre_clear: bool = False
 
@@ -27,18 +29,25 @@ class CmdParams:
     overwrite_date_end: str = None
 
 
-class CellColors(Enum):
+class CellColors(list, Enum):
     """Цвета ячеек"""
 
     # общее оформление
-    BORDER = Color(rgb="FF595959")
-    TITLE = Color(rgb="FF000000")
-    ORDER = Color(rgb="FFD9D9D9")
-    # кафедры
-    OTHERS_DEP = Color(rgb="FFD1F3FF")  # ведут другие кафедры
-    VM_DEP = Color(rgb="FFFFF56D")  # ведет ВМ
-    VEGA_DEP = Color(rgb="FFEAFF9F")  # ведет ВЕГА/только для ВЕГИ
-    ONLY_VM_DEP = Color(rgb="FFFFCCFF")  # только для подгруппы ВМ
+    # BORDER = Color(rgb="FF595959")
+    # TITLE = Color(rgb="FF000000")
+    # ORDER = Color(rgb="FFD9D9D9")
+    # КАФЕДРЫ
+    OTHERS_DEP_COLORS = [Color(rgb="FFD1F3FF")]  # ведут другие кафедры
+    VM_DEP_COLORS = [Color(rgb="FFFFF56D"), Color(rgb="FFFFE15A")]  # ведет ВМ
+    VEGA_DEP_COLORS = [
+        Color(rgb="FFEAFF9F"),
+        Color(rgb="FFF1FF67"),
+        Color(rgb="FFF4FF67"),
+        Color(rgb="FFF0FF29"),
+        Color(rgb="FFE5FF99"),
+    ]  # ведет ВЕГА/только для ВЕГИ
+    ONLY_VM_DEP_COLORS = [Color(rgb="FFFFCCFF")]    # только для подгруппы ВМ
+    ONLY_VEGA_DEP_COLORS = [Color(rgb="FFCCFF66")]  # только для подгруппы ВЕГИ
 
 
 class ListData(Enum):

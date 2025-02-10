@@ -13,6 +13,8 @@ from datetime import timedelta
 
 # usefull
 from openpyxl import load_workbook
+from openpyxl.styles.colors import Color
+
 from progress.bar import PixelBar
 from dotenv import load_dotenv
 
@@ -22,7 +24,7 @@ from src.db_class import Database
 
 from src.structs import CmdParams
 from src.structs import ListData
-
+from src.structs import CellColors
 
 
 WEEKS = 17
@@ -67,7 +69,7 @@ class VegaRaspParser:
             overwrite_day_start = cmd_params.overwrite_date_start
             overwrite_day_end = cmd_params.overwrite_date_end
             # первый день обучения магистров
-            self.magic_first_stud_date = cmd_params.magic_start_date 
+            self.magic_first_stud_date = cmd_params.magic_start_date
 
         self.is_default = False
         self.is_session = False
@@ -123,7 +125,9 @@ class VegaRaspParser:
         # первый день обучения для магистров (не задан -> будет как у всех)
         if self.magic_first_stud_date is None:
             self.magic_first_stud_date = self.start_date
-        self.magic_first_stud_date = datetime.strptime(self.magic_first_stud_date, "%Y-%m-%d").date()
+        self.magic_first_stud_date = datetime.strptime(
+            self.magic_first_stud_date, "%Y-%m-%d"
+        ).date()
 
         if overwrite_day_start is None or overwrite_day_end is None:
             overwrite_day_start = self.start_date
@@ -190,24 +194,27 @@ class VegaRaspParser:
         self.db.fill_rasp18_for_period(self.semcode, self.start_date, self.end_date)
         # очистка данных расписания в период между заданными в конфиге датами
         self.db.clear_rasp_data_between_weeks(
-            semcode=self.semcode, is_semestr=default_rasp,
-            start_date=self.first_day, end_date=self.last_day
+            semcode=self.semcode,
+            is_semestr=default_rasp,
+            start_date=self.first_day,
+            end_date=self.last_day,
         )
         # ---------------Парсим расписание в цикле по группам--------------
         merged_cells = ws.merged_cells
         for col in range(min_col, max_col + 1):
-            group_name = ws.cell(self.group_row, col).value
+            group_cell = ws.cell(self.group_row, col).value
             # если заголовок столбца пустой, пропускаем
-            if not group_name:
+            if not group_cell:
                 continue
             if default_rasp:
-                self.parse_default_col(col, ws, max_row, group_name, merged_cells)
+                self.parse_default_col(col, ws, max_row, group_cell, merged_cells)
             else:
-                self.parse_exam_col(col, ws, max_row, group_name)
+                self.parse_exam_col(col, ws, max_row, group_cell)
 
-    def parse_default_col(self, col, ws, max_row, group_name, merged_cells):
+    def parse_default_col(self, col, ws, max_row, group_cell, merged_cells):
         """Разбор колонки группы"""
-        # заполняем БД данными по группе
+        group_parts = utils.get_group_parts(group_cell)
+        group_name = group_parts["name"]
         group_id = self.db.set_group(group_name)
 
         order = 1
@@ -259,6 +266,9 @@ class VegaRaspParser:
                 order = cur_order
 
             lesson_parts = self.get_lesson_parts(lesson_cell, is_magic)
+            # если подгруппа ВЕГИ или ВМ, то переписываем
+            if group_parts["sub_group"] != -1:
+                lesson_parts["sub_group"] = group_parts["sub_group"]
 
             # заполнение БД новыми данными
             for pair_num in range(order, order + lesson_count):
@@ -270,7 +280,7 @@ class VegaRaspParser:
                     group_id,
                     room,
                     department_id,
-                    is_magic
+                    is_magic,
                 )
 
             # переходим к новой паре
@@ -373,6 +383,13 @@ class VegaRaspParser:
             params = {"day": cur_date, "semcode": self.semcode}
             day_id = self.db.get_id(table_name="sc_rasp18_days", params=params)
 
+            if teacher is not None:
+                params = {"fio": teacher}
+                prep_id = self.db.get_id(table_name="sc_prep", params=params)
+                # если перепутали имя препода, добавим такую
+                if prep_id is None:
+                    prep_id = self.db.set_prep(fio=teacher)
+
             # set_rasp18
             rasp18_id = self.db.set_rasp18(
                 semcode=self.semcode,
@@ -394,13 +411,7 @@ class VegaRaspParser:
                 rasp18_id=rasp18_id, group_id=group_id, subgroup=0
             )
             # set_rasp18_preps
-            if teacher is not None:
-                params = {"fio": teacher}
-                prep_id = self.db.get_id(table_name="sc_prep", params=params)
-                # если перепутали имя препода, добавим такую
-                if prep_id is None:
-                    prep_id = self.db.set_prep(fio=teacher)
-
+            if prep_id is not None:
                 self.db.set_rasp18_preps(rasp18_id=rasp18_id, prep_id=prep_id)
             # set_rasp18_rooms
             if room is not None:
@@ -424,18 +435,39 @@ class VegaRaspParser:
             "weeks_list": "null",
             "weeks_text": "null",
             "worktype": "null",
+            # "timestart": None,
+            # "timeend": None,
+            # "is_complex": False,
         }
 
         # получаем тип пары (лк, пр, лб)
         lesson_type = utils.get_lesson_type(lesson_cell)
         worktype = utils.get_worktype(lesson_type)
+        lesson_parts["worktype"] = worktype
         # получаем подгруппу
         # получаем данные по неделям
         weeks_parts = self.get_weeks_parts(lesson_cell, is_magic)
         lesson_parts["parity"] = weeks_parts["parity"]
         lesson_parts["weeks_list"] = weeks_parts["weeks_list"]
         lesson_parts["weeks_text"] = weeks_parts["weeks_text"]
-        lesson_parts["worktype"] = worktype
+
+        # time_parts = utils.get_time_from_lesson(lesson_cell)
+        # if len(time_parts) > 0:
+        #     lesson_parts["is_complex"] = True
+        #     lesson_parts["parity"] = []
+        #     lesson_parts["weeks_list"] = []
+        #     lesson_parts["weeks_text"] = []
+        #     for t in time_parts:
+        #         # если указаны недели
+        #         if t["weeks"] is not None:
+        #             weeks_parts = utils.get_weeks_parts(t["weeks"])
+        #             lesson_parts["parity"].append(weeks_parts["parity"])
+        #             lesson_parts["weeks_list"].append(weeks_parts["weeks_list"])
+        #             lesson_parts["weeks_text"].append(weeks_parts["weeks_text"])
+
+        #         # время указано всегда или сюда не зайдем
+        #         lesson_parts["timestart"].append(t["timestart"])
+        #         lesson_parts["timeend"].append(t["timeend"])
 
         # удаляем лишнее и получаем название дисциплины
         lesson_parts["disc_name"] = utils.get_disc_name(lesson_cell, lesson_parts)
@@ -457,7 +489,7 @@ class VegaRaspParser:
         all_weeks = list(range(start_week, last_week))
 
         if is_magic:
-            last_week = start_week+WEEKS
+            last_week = start_week + WEEKS
             start_week = self.db.get_week(self.magic_first_stud_date, self.semcode)
             all_weeks = list(range(start_week, last_week))
 
@@ -471,8 +503,8 @@ class VegaRaspParser:
         if parity != 0:
             parity_list = ListData.PARITY.value
             if start_week > parity:
-                is_even = start_week%2
-                if parity%2 != is_even:
+                is_even = start_week % 2
+                if parity % 2 != is_even:
                     start_week += 1
             else:
                 start_week = parity
@@ -522,7 +554,7 @@ class VegaRaspParser:
         group_id: int,
         room: str,
         department_id: int,
-        is_magic: bool
+        is_magic: bool,
     ):
         """Заполнение таблиц по данным одного дня недели определенной группы"""
         # таблица дисциплин
@@ -592,7 +624,7 @@ class VegaRaspParser:
 
         params = {
             "semcode": self.semcode,
-            "day": str(self.first_day), # не влияет ни на что, перезапишется сразу
+            "day": str(self.first_day),  # не влияет ни на что, перезапишется сразу
             "weekday": weekday_num,
             "week": start_week,
         }
@@ -634,7 +666,7 @@ class VegaRaspParser:
             if prep_id is not None:
                 self.db.set_rasp18_preps(rasp18_id, prep_id)
             if room is not None:
-                self.db.set_rasp18_rooms(rasp18_id, room)      
+                self.db.set_rasp18_rooms(rasp18_id, room)
 
     def fill_rasp_title_parts(self, max_row: int, ws):
         """
@@ -673,43 +705,47 @@ class VegaRaspParser:
     def get_dep_id(self, cel_color: int) -> int:
         """Получить по цвету ячейки id кафедры"""
         department_name = "другая"
-        match cel_color:
-            # зеленый
-            case "FFCCFF66":  # только для ВЕГИ
-                department_name = "только для ВЕГИ"
-            # розовый
-            case "FFFFCCFF":  # только для ВМ
-                department_name = "только для ВМ"
-            # темно желтый
-            case "FFFFE15A":  # Для всех, ведет кафедра ВМ
-                department_name = "ВМ"
-            case "FFFFF56D":  # Для всех, ведет кафедра ВМ/Просто для всех(у бакалавров)
-                department_name = "ВМ"
-            # желтый/бледно желтый
-            case "FFF1FF67":  #
-                department_name = "ВЕГА"
-            case "FFF4FF67":  # ведет ВЕГА для всех
-                department_name = "ВЕГА"
-            case "FFF0FF29":  # ведет ВЕГА для всех
-                department_name = "ВЕГА"
-            case "FFEAFF9F":  # ведет ВЕГА
-                department_name = "ВЕГА"
-            case "FFE5FF99":  # ведет ВЕГА
-                department_name = "ВЕГА"
-            # голубой цвет
-            case "FFB2ECFF":  # Для всех, ведут другие кафедры
-                department_name = "другая"
-            case "FFD1F3FF":  # Для всех, ведут другие кафедры
-                department_name = "другая"
-            # белый/без заливки
-            case 0:
-                department_name = "другая"
-            case "00000000":
-                department_name = "другая"
-            case _:
-                print(f"Новый цвет кафедры: {cel_color}")
-                department_name = "другая"
+        excel_color = Color(rgb=cel_color)
 
+        if excel_color in CellColors.VEGA_DEP_COLORS:
+            department_name = "ВЕГА"
+        elif excel_color in CellColors.ONLY_VEGA_DEP_COLORS:
+            department_name = "только для ВЕГИ"
+        elif excel_color in CellColors.VM_DEP_COLORS:
+            department_name = "ВМ"
+        elif excel_color in CellColors.ONLY_VM_DEP_COLORS:
+            department_name = "только для ВМ"
+        elif excel_color in CellColors.OTHERS_DEP_COLORS:
+            department_name = "другая"
+        else:
+            print(f"Новый цвет кафедры: {cel_color}")
+            department_name = "другая"
+
+        # match cel_color:
+        #     # зеленый
+        #     case "FFCCFF66":  # только для ВЕГИ
+        #         department_name = "только для ВЕГИ"
+        #     # розовый
+        #     case "FFFFCCFF":  # только для ВМ
+        #         department_name = "только для ВМ"
+        #     # темно желтый
+        #     case "FFFFE15A":  # Для всех, ведет кафедра ВМ
+        #         department_name = "ВМ"
+        #     case "FFFFF56D":  # Для всех, ведет кафедра ВМ/Просто для всех(у бакалавров)
+        #         department_name = "ВМ"
+        #     # голубой цвет
+        #     case "FFB2ECFF":  # Для всех, ведут другие кафедры
+        #         department_name = "другая"
+        #     case "FFD1F3FF":  # Для всех, ведут другие кафедры
+        #         department_name = "другая"
+        #     # белый/без заливки
+        #     case 0:
+        #         department_name = "другая"
+        #     case "00000000":
+        #         department_name = "другая"
+        #     case _:
+        #         print(f"Новый цвет кафедры: {cel_color}")
+        #         department_name = "другая"
 
         dep_params = {"title": department_name}
         department_id = self.db.get_id("sc_department", dep_params)
