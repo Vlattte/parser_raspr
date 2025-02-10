@@ -32,10 +32,6 @@ class CmdParams:
 class CellColors(list, Enum):
     """Цвета ячеек"""
 
-    # общее оформление
-    # BORDER = Color(rgb="FF595959")
-    # TITLE = Color(rgb="FF000000")
-    # ORDER = Color(rgb="FFD9D9D9")
     # КАФЕДРЫ
     OTHERS_DEP_COLORS = [Color(rgb="FFD1F3FF")]  # ведут другие кафедры
     VM_DEP_COLORS = [Color(rgb="FFFFF56D"), Color(rgb="FFFFE15A")]  # ведет ВМ

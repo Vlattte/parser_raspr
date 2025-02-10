@@ -3,7 +3,9 @@
 from re import search
 from re import fullmatch
 from re import sub
-from re import findall
+from re import finditer
+
+from enum import Enum
 
 from copy import deepcopy
 from datetime import datetime, time
@@ -11,10 +13,15 @@ from datetime import datetime, time
 from src.structs import ListData
 
 
+class Patterns(str, Enum):
+    """Часто используемые паттерны для регулярок"""
+    WEEK_AND_TIME = r".*(\d{1,2}:\d{1,2})(\D)*(\d{1,2}:\d{1,2})"
+
+
 def get_group_parts(group_cell: str) -> dict:
     """Получить название и доп информацию по группе"""
     group_name = group_cell
-    group_parts = {"course": -1, "name": "", "sub_group": 0}
+    group_parts = {"course": -1, "name": "", "sub_group": -1}
 
     # если есть подстрока с курсов, вытаскиваем
     kurs = search(r"\d курс", group_cell)
@@ -258,16 +265,16 @@ def get_lesson_count(merged_cells, coord) -> int:
 
 def get_time_from_lesson(lesson_cell: str) -> list:
     """Если в названии пары есть время, вытаскиваем"""
+    return []
     time_parts = []
 
-    time_pattern = r"(\D)*(\d{1,2}:\d{1,2})(\D)*(\d{1,2}:\d{1,2})"
-    replace_pattern = r"\2-\4"
+    replace_pattern = r"\1-\3"
     week_pattern = r"I{1,2}н"
 
-    all_times = findall(time_pattern, lesson_cell)
+    all_times = finditer(Patterns.WEEK_AND_TIME, lesson_cell)
     for t in all_times:
         time_dict = {"timestart": None, "timeend": None, "weeks": None}
-        lesson_duration = sub(time_pattern, replace_pattern, t)
+        lesson_duration = sub(Patterns.WEEK_AND_TIME, replace_pattern, t.group())
         timestart, timeend = lesson_duration.split("-")
 
         time_dict["timestart"] = timestart
@@ -289,7 +296,7 @@ def get_week_parity(lesson: str) -> int:
 
 def get_disc_name(lesson: str, lesson_parts: dict) -> str:
     """Убрать лишнее из названия дисциплины и вернуть только само название"""
-    disc_name = deepcopy(lesson)
+    disc_name = lesson
 
     # убираем недели
     if lesson_parts["parity"] == 0 and len(lesson_parts["weeks_list"]) < 16:
@@ -310,7 +317,7 @@ def get_disc_name(lesson: str, lesson_parts: dict) -> str:
         disc_name = disc_name.removesuffix(sub_group_str)
 
     # убираем лишние данные про время
-    # TODO
+    disc_name = sub(Patterns.WEEK_AND_TIME, "", disc_name)    
 
     # чтобы избежать опечаток с пробелами, добавляем после всех точек пробел
 
