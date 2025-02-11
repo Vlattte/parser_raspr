@@ -125,7 +125,7 @@ def get_stud_period(semcode: int):
     return start_date, end_date
 
 
-def get_order_by_time(time_start):
+def get_order_by_time(time_start: time):
     """Определение номера пары по ее времени"""
     order = 1
     if time_start < time(10, 30):
@@ -262,6 +262,18 @@ def get_lesson_count(merged_cells, coord) -> int:
         # делим на 2, так как каждая ячейка содержит четную и нечетные недели
         return int(lesson_count / 2)
     return 1
+
+def get_leeson_count(timestart: str, timeend: str) -> int:
+    """Получить количество пар в промежутке времени"""
+    h, m = timestart.split(":")
+    t_start = time(hour=int(h), minute=int(m))
+    h, m = timeend.split(":")
+    t_end = time(hour=int(h), minute=int(m))
+
+    start_order = get_order_by_time(t_start)
+    end_order = get_order_by_time(t_end)
+    lesson_count = end_order - start_order + 1
+    return lesson_count
 
 
 def get_time_from_lesson(lesson_cell: str) -> list:

@@ -33,7 +33,10 @@ class CellColors(list, Enum):
     """Цвета ячеек"""
 
     # КАФЕДРЫ
-    OTHERS_DEP_COLORS = [Color(rgb="FFD1F3FF")]  # ведут другие кафедры
+    OTHERS_DEP_COLORS = [
+        Color(rgb="FFD1F3FF"),
+        Color(rgb="00000000"),
+    ]  # ведут другие кафедры
     VM_DEP_COLORS = [Color(rgb="FFFFF56D"), Color(rgb="FFFFE15A")]  # ведет ВМ
     VEGA_DEP_COLORS = [
         Color(rgb="FFEAFF9F"),
@@ -42,7 +45,7 @@ class CellColors(list, Enum):
         Color(rgb="FFF0FF29"),
         Color(rgb="FFE5FF99"),
     ]  # ведет ВЕГА/только для ВЕГИ
-    ONLY_VM_DEP_COLORS = [Color(rgb="FFFFCCFF")]    # только для подгруппы ВМ
+    ONLY_VM_DEP_COLORS = [Color(rgb="FFFFCCFF")]  # только для подгруппы ВМ
     ONLY_VEGA_DEP_COLORS = [Color(rgb="FFCCFF66")]  # только для подгруппы ВЕГИ
 
 
