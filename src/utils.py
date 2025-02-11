@@ -265,9 +265,9 @@ def get_lesson_count(merged_cells, coord) -> int:
 
 def get_leeson_count(timestart: str, timeend: str) -> int:
     """Получить количество пар в промежутке времени"""
-    h, m = timestart.split(":")
+    h, m, _ = timestart.split(":")
     t_start = time(hour=int(h), minute=int(m))
-    h, m = timeend.split(":")
+    h, m, _ = timeend.split(":")
     t_end = time(hour=int(h), minute=int(m))
 
     start_order = get_order_by_time(t_start)
@@ -339,6 +339,8 @@ def get_disc_name(lesson: str, lesson_parts: dict) -> str:
     disc_name = disc_name.replace(". ", ".")
     # Лин.алг.и ан.геом.   -> Лин. алг. и ан. геом.
     disc_name = disc_name.replace(".", ". ")
+    # удаляем \n
+    disc_name = disc_name.replace("\n", "")
 
     # убираем лишние пробелы по краям
     disc_name = disc_name.removeprefix(" ")

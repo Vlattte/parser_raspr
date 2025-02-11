@@ -283,8 +283,8 @@ class VegaRaspParser:
             for comp_record in range(complex_len):
                 if complex_len > 1:
                     t = time_parts[comp_record]
-                    lesson_parts["timestart"] = t["timestart"]
-                    lesson_parts["timeend"] = t["timeend"]
+                    lesson_parts["timestart"] = t["timestart"] + ":00"
+                    lesson_parts["timeend"] = t["timeend"] + ":00"
                     if t["weeks"] is not None:
                         weeks_parts = self.get_weeks_parts(t["weeks"], is_magic)
 
@@ -460,9 +460,6 @@ class VegaRaspParser:
             "weeks_list": "null",
             "weeks_text": "null",
             "worktype": "null",
-            "timestart": None,
-            "timeend": None,
-            "is_complex": False,
         }
 
         # получаем тип пары (лк, пр, лб)
