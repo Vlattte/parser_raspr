@@ -4,6 +4,8 @@
 from os import getenv
 from os import path
 
+from copy import deepcopy
+
 import re
 
 # datetime
@@ -311,6 +313,10 @@ class VegaRaspParser:
                         department_id,
                         is_magic,
                     )
+
+                    # смещение, если пара длится несколько пар
+                    if "timestart" in lesson_parts:
+                        lesson_parts["timestart"] = utils.get_time_by_order(pair_num+1)
 
             # переходим к новой паре
             row += 1
@@ -677,7 +683,10 @@ class VegaRaspParser:
 
             # если было указано какое-то особое время, то записываем
             if "timestart" in lesson_parts:
-                # если поставили конец пары пораньше
+                # если поставили НАЧАЛО пары пораньше
+                time_start = deepcopy(lesson_parts["timestart"])
+
+                # если поставили КОНЕЦ пары пораньше
                 h, m, _ = lesson_parts["timeend"].split(':')
                 t_end_buf = time(hour=int(h), minute=int(m))
                 time_end = min(t_end_buf, time_end)

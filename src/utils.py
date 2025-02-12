@@ -22,6 +22,8 @@ class Patterns(str, Enum):
     ONLY_STUD_WEEKS = (
         r"\d+([,-](\s)?\d+)*н"  # если выбраны оперделенные недели для этой пары
     )
+    
+    ANOTHER_SUBGROUPS = r"(\d*пг)"
 
 
 def get_group_parts(group_cell: str) -> dict:
@@ -347,6 +349,9 @@ def get_disc_name(lesson: str, lesson_parts: dict) -> str:
     # убираем лишние пробелы по краям
     disc_name = disc_name.removeprefix(" ")
     disc_name = disc_name.removesuffix(" ")
+
+    # костыль для подгрупп на ин.язе
+    disc_name = disc_name.replace("(1*пг)", "(1*пг)\n")
 
     return disc_name
 
