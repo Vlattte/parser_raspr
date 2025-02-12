@@ -1,14 +1,13 @@
 """Вспомогательные структуры"""
 
 from enum import Enum
-from dataclasses import dataclass
 from openpyxl.styles.colors import Color
 
+from pydantic import BaseModel
 
-@dataclass
-class CmdParams:
+
+class CmdParams(BaseModel):
     """Параметры командной строки, тоже самое, что в .env"""
-
     # очистка ВСЕХ таблиц перед запуском
     pre_clear: bool = False
 

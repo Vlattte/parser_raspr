@@ -42,12 +42,14 @@ SUMMER_SUBSTR = "летн"
 class VegaRaspParser:
     """Парсер excel расписания"""
 
-    def __init__(self, cmd_params: CmdParams = None) -> None:
+    def __init__(self, cmd_params: CmdParams = None, is_web: bool = False) -> None:
         # очищаем ли базу
         pre_clear = False
         overwrite_day_start = None
         overwrite_day_end = None
         if cmd_params is None:
+            if cmd_params is None and is_web:
+                return 400
             load_dotenv()
             pre_clear = getenv("PRE_CLEAR")
             pre_clear = bool(int(pre_clear))

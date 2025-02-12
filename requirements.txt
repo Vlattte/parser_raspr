@@ -2,3 +2,8 @@ python-dotenv
 openpyxl
 psycopg2
 progress
+fastapi
+uvicorn
+python-multipart
+fastapi-utils
+typing-inspect
