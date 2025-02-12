@@ -1,10 +1,6 @@
 """Вспомогательные методы"""
 
-from re import search
-from re import fullmatch
-from re import match
-from re import sub
-from re import finditer
+import re
 
 from enum import Enum
 
@@ -16,7 +12,16 @@ from src.structs import ListData
 
 class Patterns(str, Enum):
     """Часто используемые паттерны для регулярок"""
-    WEEK_AND_TIME = r".*(\d{1,2}:\d{2})\D*(\d{2}:\d{2})"
+
+    WEEK_AND_TIME = r"""((I{1,2}н).*)?      # если указан номер недели
+                        (\d{1,2}:\d{2})     # время начала пары
+                        \D*                 # если формат ".. с .. до ..", то тут будет ".. до .."
+                        (\d{2}:\d{2})       # время конца пары
+                    """ # использовать с re.VERBOSE
+    EXCEPT_WEEKS = r"кр.(\d(,\d))*н "
+    ONLY_STUD_WEEKS = (
+        r"\d+([,-](\s)?\d+)*н"  # если выбраны оперделенные недели для этой пары
+    )
 
 
 def get_group_parts(group_cell: str) -> dict:
@@ -25,13 +30,13 @@ def get_group_parts(group_cell: str) -> dict:
     group_parts = {"course": -1, "name": "", "sub_group": -1}
 
     # если есть подстрока с курсов, вытаскиваем
-    kurs = search(r"\d курс", group_cell)
+    kurs = re.search(r"\d курс", group_cell)
     if kurs is not None:
         group_parts["course"] = kurs.group()
         group_name = group_name.removeprefix(kurs)
 
     # если есть подстрока с кафедрой, пишем как подгруппу
-    dep = search(r"\((\w)*\)", group_cell)
+    dep = re.search(r"\((\w)*\)", group_cell)
     if dep is not None:
         dep_name = dep.group().upper()
         if "ВЕГА" in dep_name:
@@ -57,8 +62,8 @@ def get_max_row(ws):
             if cur_cell is None:
                 continue
             # если нашли строку со словом "легенда", то далее ищем первую значимую строку
-            legend_substr = search(legend_pattern, ws.cell(row, col).value)
-            kurs_substr = search(kurs_pattern, ws.cell(row, col).value)
+            legend_substr = re.search(legend_pattern, ws.cell(row, col).value)
+            kurs_substr = re.search(kurs_pattern, ws.cell(row, col).value)
             if legend_substr is not None or kurs_substr is not None:
                 max_row = row
                 break
@@ -85,9 +90,9 @@ def get_lesson_type(lesson: str) -> str:
     # Лин.алг.и ан.геом.   -> Лин. алг. и ан. геом.
     lesson_copy = lesson_copy.replace(".", ". ")
 
-    if search(r"лк", lesson) is not None:
+    if re.search(r"лк", lesson) is not None:
         lesson_type = "лк"
-    if search(r"лб", lesson) is not None:
+    if re.search(r"лб", lesson) is not None:
         lesson_type = "лб"
     return lesson_type
 
@@ -99,7 +104,7 @@ def get_stud_years(title: str):
     end_year = start_year + 1
 
     year_pattern = r"20\d\d/\d\d"
-    stud_years = search(year_pattern, title)
+    stud_years = re.search(year_pattern, title)
 
     if stud_years is not None:
         years_str = stud_years.group()
@@ -249,7 +254,7 @@ def get_lesson_count(merged_cells, coord) -> int:
         merged_cells_list = merged_cells.sorted()
         merged_range = None
         for cell_range in merged_cells_list:
-            if fullmatch(coord_pattern, cell_range.coord):
+            if re.fullmatch(coord_pattern, cell_range.coord):
                 merged_range = cell_range
                 break
     if merged_range is None:
@@ -263,7 +268,8 @@ def get_lesson_count(merged_cells, coord) -> int:
         return int(lesson_count / 2)
     return 1
 
-def get_leeson_count(timestart: str, timeend: str) -> int:
+
+def get_lesson_count_str(timestart: str, timeend: str) -> int:
     """Получить количество пар в промежутке времени"""
     h, m, _ = timestart.split(":")
     t_start = time(hour=int(h), minute=int(m))
@@ -280,20 +286,13 @@ def get_time_from_lesson(lesson_cell: str) -> list:
     """Если в названии пары есть время, вытаскиваем"""
     time_parts = []
 
-    replace_pattern = r"\1-\2"
-    week_pattern = r"I{1,2}н"
-
-    all_times = finditer(Patterns.WEEK_AND_TIME, lesson_cell)
+    all_times = re.finditer(Patterns.WEEK_AND_TIME, lesson_cell, re.VERBOSE)
     for t in all_times:
-        time_dict = {"timestart": None, "timeend": None, "weeks": None}
-        lesson_duration = sub(Patterns.WEEK_AND_TIME, replace_pattern, t.group())
-        timestart, timeend = lesson_duration.split("-")
-        weeks = search(week_pattern, t.group())
-
-        time_dict["timestart"] = timestart
-        time_dict["timeend"] = timeend
-        if weeks is not None:
-            time_dict["weeks"] = weeks.group()
+        time_dict = {
+            "timestart": t.group(3),
+            "timeend": t.group(4),
+            "weeks": t.group(2),
+        }
 
         time_parts.append(time_dict)
     return time_parts
@@ -310,9 +309,15 @@ def get_week_parity(lesson: str) -> int:
 
 def get_disc_name(lesson: str, lesson_parts: dict) -> str:
     """Убрать лишнее из названия дисциплины и вернуть только само название"""
-    disc_name = lesson    
+    disc_name = lesson
 
+    # убираем лишние данные про время
+    disc_name = re.sub(Patterns.WEEK_AND_TIME, r"", disc_name, flags=re.VERBOSE)
+    # убраем кр.1,2н (кроме таких-то недель)
+    disc_name = re.sub(Patterns.EXCEPT_WEEKS, r"", disc_name)
     # убираем недели
+    disc_name = re.sub(Patterns.ONLY_STUD_WEEKS, r"", disc_name)
+
     if lesson_parts["parity"] == 0 and len(lesson_parts["weeks_list"]) < 16:
         disc_name = disc_name.removeprefix(lesson_parts["weeks_text"])
     elif lesson_parts["parity"] > 0:
@@ -329,9 +334,6 @@ def get_disc_name(lesson: str, lesson_parts: dict) -> str:
         subgroups = ListData.SUBGROUPS.value
         sub_group_str = subgroups[lesson_parts["sub_group"] - 1]
         disc_name = disc_name.removesuffix(sub_group_str)
-
-    # убираем лишние данные про время
-    disc_name = sub(Patterns.WEEK_AND_TIME, "", disc_name)
 
     # чтобы избежать опечаток с пробелами, добавляем после всех точек пробел
 

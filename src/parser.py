@@ -4,7 +4,7 @@
 from os import getenv
 from os import path
 
-from re import search
+import re
 
 # datetime
 from datetime import datetime
@@ -32,6 +32,9 @@ AUTUMN_SUBSTR = "осен"
 SPRING_SUBSTR = "весен"
 WINTER_SUBSTR = "зимн"
 SUMMER_SUBSTR = "летн"
+
+# TODO добавить: I,IIн - все недели, просто не смерджено
+#                6-7п. - на 6 и 7 парах
 
 
 class VegaRaspParser:
@@ -281,8 +284,9 @@ class VegaRaspParser:
 
             # заполнение БД новыми данными
             for comp_record in range(complex_len):
-                if complex_len > 1:
+                if len(time_parts) > 0:
                     t = time_parts[comp_record]
+                    # добавляем секунды, чтобы потом обрезать их при записи в БД (TODO переделать!!!)
                     lesson_parts["timestart"] = t["timestart"] + ":00"
                     lesson_parts["timeend"] = t["timeend"] + ":00"
                     if t["weeks"] is not None:
@@ -292,7 +296,7 @@ class VegaRaspParser:
                         lesson_parts["weeks_list"] = weeks_parts["weeks_list"]
                         lesson_parts["weeks_text"] = weeks_parts["weeks_text"]
 
-                    lesson_count = utils.get_leeson_count(
+                    lesson_count = utils.get_lesson_count_str(
                         lesson_parts["timestart"], lesson_parts["timeend"]
                     )
 
@@ -490,12 +494,20 @@ class VegaRaspParser:
         """Получить номера недель, когда будет пара"""
         last_week = WEEKS
         start_week = 1
-        all_weeks = list(range(start_week, last_week))
 
         if is_magic:
             last_week = start_week + WEEKS
             start_week = self.db.get_week(self.magic_first_stud_date, self.semcode)
-            all_weeks = list(range(start_week, last_week))
+        all_weeks = list(range(start_week, last_week))
+
+        # ищем кр.(кроме таких-то недель)
+        except_weeks = re.match(utils.Patterns.EXCEPT_WEEKS, lesson)
+        if except_weeks is not None:
+            except_weeks = except_weeks.group(1).split(",")
+            except_weeks = map(int, except_weeks)
+            all_weeks = [
+                w for w in range(start_week, last_week) if w not in except_weeks
+            ]
 
         weeks_text = ", ".join(map(str, all_weeks))
         weeks_parts = {"parity": 0, "weeks_list": all_weeks, "weeks_text": weeks_text}
@@ -515,17 +527,30 @@ class VegaRaspParser:
 
             weeks_parts["weeks_list"] = list(range(start_week, last_week, 2))
             weeks_parts["weeks_text"] = parity_list[parity - 1]
+
+            # если была пометка кр. (кроме таких-то недель)
+            if except_weeks is not None:
+                weeks_parts["weeks_list"] = [
+                    w for w in weeks_parts["weeks_list"] if w not in except_weeks
+                ]
+                weeks_text = ", ".join(map(str, weeks_parts["weeks_list"]))
             return weeks_parts
 
-        pattern = r"\d+(,(\s)?\d+)*н"
-        substring = search(pattern, lesson)
-        if substring is not None:
-            # проверяем наличие недельного распределения
-            weeks_parts["weeks_text"] = substring.group()
+        # проверяем наличие недельного распределения
+        substring = re.search(utils.Patterns.ONLY_STUD_WEEKS, lesson)
+        if substring is not None and except_weeks is None:
             substring = substring.group().removesuffix("н")
+            weeks_parts["weeks_text"] = substring
             weeks = substring.split(",")
+
+            # если указан промежуток недель (5-8н)
+            between_weeks = r"\d{1,2}-\d{1,2}"
+            weeks_period = re.search(between_weeks, substring)
+            if weeks_period is not None:
+                start_week, last_week = weeks_period.group().split("-")
+                weeks = list(range(int(start_week), int(last_week)+1))
+
             weeks_parts["weeks_list"] = list(map(int, weeks))
-            return weeks_parts
 
         return weeks_parts
 
@@ -652,8 +677,10 @@ class VegaRaspParser:
 
             # если было указано какое-то особое время, то записываем
             if "timestart" in lesson_parts:
-                time_start = lesson_parts["timestart"]
-                time_end = lesson_parts["timeend"]
+                # если поставили конец пары пораньше
+                h, m, _ = lesson_parts["timeend"].split(':')
+                t_end_buf = time(hour=int(h), minute=int(m))
+                time_end = min(t_end_buf, time_end)
 
             rasp18_id = self.db.set_rasp18(
                 semcode=self.semcode,
@@ -728,32 +755,6 @@ class VegaRaspParser:
         else:
             print(f"Новый цвет кафедры: {cel_color}")
             department_name = "другая"
-
-        # match cel_color:
-        #     # зеленый
-        #     case "FFCCFF66":  # только для ВЕГИ
-        #         department_name = "только для ВЕГИ"
-        #     # розовый
-        #     case "FFFFCCFF":  # только для ВМ
-        #         department_name = "только для ВМ"
-        #     # темно желтый
-        #     case "FFFFE15A":  # Для всех, ведет кафедра ВМ
-        #         department_name = "ВМ"
-        #     case "FFFFF56D":  # Для всех, ведет кафедра ВМ/Просто для всех(у бакалавров)
-        #         department_name = "ВМ"
-        #     # голубой цвет
-        #     case "FFB2ECFF":  # Для всех, ведут другие кафедры
-        #         department_name = "другая"
-        #     case "FFD1F3FF":  # Для всех, ведут другие кафедры
-        #         department_name = "другая"
-        #     # белый/без заливки
-        #     case 0:
-        #         department_name = "другая"
-        #     case "00000000":
-        #         department_name = "другая"
-        #     case _:
-        #         print(f"Новый цвет кафедры: {cel_color}")
-        #         department_name = "другая"
 
         dep_params = {"title": department_name}
         department_id = self.db.get_id("sc_department", dep_params)
