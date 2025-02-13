@@ -7,24 +7,20 @@ from os import mkdir
 from os import path
 
 import uvicorn
+import asyncio
 
 from dotenv import load_dotenv
 
 from fastapi import FastAPI
 from fastapi import UploadFile
 from fastapi.responses import Response
-from fastapi_utils.cbv import cbv
-from fastapi_utils.inferring_router import InferringRouter
 
 from src.parser import VegaRaspParser
 from src.structs import CmdParams
 
 app = FastAPI()
-router = InferringRouter()
 
 load_dotenv()
-
-buf_cmd_params = CmdParams()
 
 def is_params_good(cmd_params: CmdParams) -> bool:
     """Проверка на корректность переданных аргументов"""
@@ -97,71 +93,61 @@ def parse_cmd_argument() -> CmdParams | None:
         return cmd_params
     return None
 
-@cbv(router)
-class Server:
-    """Получение запросов для работы парсера"""
+
+# @cbv(router)
+# class Server:
+#     """Получение запросов для работы парсера"""
+
+# def __init__(self):
+#     """Инициализация"""
+#     print("INIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIT")
+#     self.cmd_params = CmdParams()
+#     self.sem_filename = None
+#     self.exam_filename = None
+
+#     if not path.isdir(self.folder_path):
+#         mkdir(self.folder_path)
+
+
+@app.post("/upload-rasp-file")
+async def upload_file(file: UploadFile):
+    """Загрузка файла для чтения"""
+    print(f"Получил файл семестра {file.filename}")
+    status = await download_file(file)
+    return status
+
+
+async def download_file(file: UploadFile):
+    """Скачиваем файл в папку rasp_files"""
+    if file is None:
+        return Response(content="No upload file sent", status_code=400)
 
     folder_path = "rasp_files"
+    if not path.isdir(folder_path):
+        mkdir(folder_path)
 
-    def __init__(self):
-        """Инициализация"""
-        print("INIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIT")
-        self.cmd_params = CmdParams()
+    file_data = file.file.read()
+    file_path = path.join(folder_path, file.filename)
+    with open(file_path, "wb") as new_file:
+        new_file.write(file_data)
 
-        if not path.isdir(self.folder_path):
-            mkdir(self.folder_path)
+    return Response(status_code=200)
 
-    @router.post("/file/upload-sem-file")
-    async def upload_sem_file(self, file: UploadFile):
-        """Загрузка файла для чтения"""
-        print(f"Получил файл семестра {file.filename}")
-        self.cmd_params.sem_filename = file.filename
-        if status.status_code == 200:
-            status = await self.download_file(file)
-        return status
 
-    @router.post("/file/upload-exam-file")
-    async def upload_exam_file(self, file: UploadFile):
-        """Загрузка файла для чтения"""
-        print(f"Получил файл сессии {file.filename}")
-        status = await self.download_file(file)
-        if status.status_code == 200:
-            self.cmd_params.session_filename = file.filename
-        return status
-
-    async def download_file(self, file: UploadFile):
-        """Скачиваем файл в папку rasp_files"""
-        if not file:
-            return Response(content="No upload file sent", status_code=400)
-
-        file_data = file.file.read()
-        file_path = path.join(self.folder_path, file.filename)
-        with open(file_path, "wb") as new_file:
-            new_file.write(file_data)
-
-        return Response(status_code=200)
-
-    @router.post("/parser_params")
-    async def set_params(self, cmd_params: CmdParams):
-        """Установка параметров парсера"""
-        global buf_cmd_params
-        if is_params_good(cmd_params):
-            self.cmd_params = cmd_params
-            buf_cmd_params = cmd_params
-            return Response(status_code=200)
-        # return Response(status_code=400)
+@app.post("/run_parser")
+async def run_parser(cmd_params: CmdParams, file: UploadFile = None):
+    """Установка параметров парсера и запуск"""
+    if not is_params_good(cmd_params):
         return Response(status_code=400)
 
-    @router.post("/run_parser")
-    async def run_parser(self):
-        """Установка параметров парсера"""
-        global buf_cmd_params
-        self.cmd_params = buf_cmd_params
-        if not is_params_good(self.cmd_params):
-            return Response(status_code=400)
-        parser = VegaRaspParser(self.cmd_params, is_web=True)
-        parser.parse()
-        return Response(status_code=200)
+    if file is not None:
+        download_status = download_file(file)
+        if download_status.status_code != 200:
+            return download_status
+
+    parser = VegaRaspParser(cmd_params)
+    parser.parse()
+    return Response(status_code=200)
 
 
 # def run_parser(cmd_params: CmdParams = None):
@@ -174,12 +160,20 @@ class Server:
 
 async def main():
     """Запуск"""
-    server = Server()
+    # server = Server()
+    # app.add_route("/file/upload-sem-file", server.upload_sem_file, ["POST"])
+    # app.add_route("/file/upload-exam-file", server.upload_exam_file, ["POST"])
+    # app.add_route("/run_parser", server.run_parser, ["POST"])
+
+    # специализированные запросы
+    # app.add_route("/run_parser", server.run_parser, ["POST"])
+    # app.add_route("/run_parser", server.run_parser, ["POST"])
+    # app.add_route("/run_parser", server.run_parser, ["POST"])
+    # app.add_route("/run_parser", server.run_parser, ["POST"])
+
     print("Connection established")
-    while True:
-        await server
     # run_parser()
 
-app.include_router(router)
+
 if __name__ == "__main__":
     uvicorn.run("run_parser:app", host="127.0.0.1", port=8000, reload=True)

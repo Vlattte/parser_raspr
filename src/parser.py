@@ -37,19 +37,17 @@ SUMMER_SUBSTR = "летн"
 
 # TODO добавить: I,IIн - все недели, просто не смерджено
 #                6-7п. - на 6 и 7 парах
-
+# TODO если ошиблись в типе файла ругаться и выбрать нужный тип
 
 class VegaRaspParser:
     """Парсер excel расписания"""
 
-    def __init__(self, cmd_params: CmdParams = None, is_web: bool = False) -> None:
+    def __init__(self, cmd_params: CmdParams = None):
         # очищаем ли базу
         pre_clear = False
         overwrite_day_start = None
         overwrite_day_end = None
         if cmd_params is None:
-            if cmd_params is None and is_web:
-                return 400
             load_dotenv()
             pre_clear = getenv("PRE_CLEAR")
             pre_clear = bool(int(pre_clear))
@@ -67,8 +65,10 @@ class VegaRaspParser:
         else:
             pre_clear = cmd_params.pre_clear
             # файлы для парсинга
-            self.default_filename = cmd_params.sem_filename
-            self.session_filename = cmd_params.session_filename
+            if cmd_params.is_sem:
+                self.default_filename = cmd_params.filename
+            else:
+                self.session_filename = cmd_params.filename
             # дата начала и конца семестра
             self.start_date = cmd_params.start_date
             self.end_date = cmd_params.end_date

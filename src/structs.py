@@ -12,8 +12,8 @@ class CmdParams(BaseModel):
     pre_clear: bool = False
 
     # файлы для парсинга
-    sem_filename: str = None
-    session_filename: str = None
+    is_sem: bool = True
+    filename: str = None
 
     # даты для заполнения sc_rasp18_days
     # start_date СОВПАДАЕТ с первым днем первой недели
