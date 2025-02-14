@@ -6,5 +6,5 @@ SELECT r18.semcode, r18m.rasp18_dest_id,r18m.src_day_id, r18m.src_pair, r18.id, 
             LEFT JOIN (SELECT * FROM sc_disc) r18disc ON r18.disc_id = r18disc.id
   LEFT JOIN sc_rasp18_move r18m ON r18.id = r18m.rasp18_dest_id or (day_id = r18m.src_day_id and pair = r18m.src_pair)
             WHERE r18.id in 
-            (SELECT rasp18_id FROM sc_rasp18_groups WHERE group_id = 10 and (subgroup = 1 or subgroup = 0) ) and weekday = 2 and week = 4 and semcode = 242501
+            (SELECT rasp18_id FROM sc_rasp18_groups WHERE group_id = 6 and (subgroup = 1 or subgroup = 0) ) and weekday = 3 and week = 3 and semcode = 242501
             ORDER BY pair ASC

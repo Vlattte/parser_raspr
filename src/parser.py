@@ -27,6 +27,8 @@ from src.db_class import Database
 from src.structs import CmdParams
 from src.structs import ListData
 from src.structs import CellColors
+from src.structs import LessonParts
+from src.structs import WeeksParts
 
 
 WEEKS = 17
@@ -39,6 +41,7 @@ SUMMER_SUBSTR = "летн"
 #                6-7п. - на 6 и 7 парах
 # TODO если ошиблись в типе файла ругаться и выбрать нужный тип
 
+
 class VegaRaspParser:
     """Парсер excel расписания"""
 
@@ -49,8 +52,10 @@ class VegaRaspParser:
         overwrite_day_end = None
         if cmd_params is None:
             load_dotenv()
+            # доп флаги
             pre_clear = getenv("PRE_CLEAR")
             pre_clear = bool(int(pre_clear))
+            self.is_debug = getenv("IS_DEBUG")
             # файлы для парсинга
             self.default_filename = getenv("DEFAULT_FILENAME")
             self.session_filename = getenv("SESSION_FILENAME")
@@ -143,6 +148,13 @@ class VegaRaspParser:
         self.first_day = datetime.strptime(overwrite_day_start, "%Y-%m-%d").date()
         self.last_day = datetime.strptime(overwrite_day_end, "%Y-%m-%d").date()
 
+        # логгируем, что заполнили дни
+        days_filles_msg = (
+            f"<--Таблица sc_rasp18_days заполнена c {overwrite_day_start} " +
+            f"по {overwrite_day_end}"
+        )
+        self.log_cmd_message(days_filles_msg)
+
     def change_to_session_params(self):
         """Меняет некоторые стандартные параметры на параметры расписания сессии"""
         self.version_col = 2
@@ -173,19 +185,30 @@ class VegaRaspParser:
 
         self.db.close_conn()
 
+    def log_cmd_message(self, msg: str):
+        """Дебаг сообщения в консоль"""
+        if not self.is_debug:
+            return
+
+        print(msg)
+
     def parse_semestr(self):
         """Парсинг расписания семестровых пар"""
-        print(f"<--PARSING SEMESTR: {self.default_filename}-->")
+        self.log_cmd_message(f"<--PARSING SEMESTR: {self.default_filename}-->")
+
         self.change_to_dafault_params()
-        self.parse_excel_file(self.default_filename)
-        print(f"<--RASP PARSED: {self.default_filename}-->")
+        self.parse_excel_file(self.default_filename, default_rasp=True)
+
+        self.log_cmd_message(f"<--RASP PARSED: {self.default_filename}-->")
 
     def parse_exam(self):
         """Парсинг расписания экзаменов"""
-        print(f"<--PARSING SESSION: {self.session_filename}-->")
+        self.log_cmd_message(f"<--PARSING SESSION: {self.session_filename}-->")
+
         self.change_to_session_params()
-        self.parse_excel_file(self.session_filename, False)
-        print(f"<--SESSION PARSED: {self.session_filename}-->")
+        self.parse_excel_file(self.session_filename, default_rasp=False)
+
+        self.log_cmd_message(f"<--SESSION PARSED: {self.session_filename}-->")
 
     def parse_excel_file(self, file_name, default_rasp=True):
         """Парсим данные"""
@@ -230,15 +253,20 @@ class VegaRaspParser:
         # проходимся по текущему столбцу по всем строкам
         row = self.group_row + 1
 
-        # progress_bar = PixelBar(group_name, max=max_row - row, suffix="%(percent)d%%")
-        # progress_bar.check_tty = False
-        # progress_bar.start()
+        progress_bar = None
+        if self.is_debug:
+            progress_bar = PixelBar(
+                group_name, max=max_row - row, suffix="%(percent)d%%"
+            )
+            progress_bar.check_tty = False
+            progress_bar.start()
 
-        # магисторская группа или нет
+        # Магистерская группа или нет
         is_magic = utils.is_magic_group(group_name)
 
         while row < max_row:
-            # progress_bar.next()
+            if self.is_debug:
+                progress_bar.next()
 
             weekday = ws.cell(row, self.weekday_col).value
             # если новый день недели
@@ -260,6 +288,10 @@ class VegaRaspParser:
                     order += 1
                 continue
 
+            # если в строке нет номера пары
+            if cur_order is not None:
+                order = cur_order
+
             # является ли длинной парой (НИР, ВОЕНКА, условно на весь день)
             coord = ws.cell(row, col).coordinate
             lesson_count = utils.get_lesson_count(merged_cells, coord)
@@ -268,10 +300,7 @@ class VegaRaspParser:
             cur_color = ws.cell(row, col).fill.start_color.rgb
             department_id = self.get_dep_id(cel_color=cur_color)
 
-            # если в строке нет номера пары
-            if cur_order is not None:
-                order = cur_order
-
+            # разделение ячейки названия пары на части
             lesson_parts = self.get_lesson_parts(lesson_cell, is_magic)
 
             # если подгруппа ВЕГИ или ВМ, то переписываем
@@ -290,9 +319,8 @@ class VegaRaspParser:
             for comp_record in range(complex_len):
                 if len(time_parts) > 0:
                     t = time_parts[comp_record]
-                    # добавляем секунды, чтобы потом обрезать их при записи в БД (TODO переделать!!!)
-                    lesson_parts["timestart"] = t["timestart"] + ":00"
-                    lesson_parts["timeend"] = t["timeend"] + ":00"
+                    lesson_parts["timestart"] = t["timestart"]
+                    lesson_parts["timeend"] = t["timeend"]
                     if t["weeks"] is not None:
                         weeks_parts = self.get_weeks_parts(t["weeks"], is_magic)
 
@@ -318,11 +346,15 @@ class VegaRaspParser:
 
                     # смещение, если пара длится несколько пар
                     if "timestart" in lesson_parts:
-                        lesson_parts["timestart"] = utils.get_time_by_order(pair_num+1)
+                        lesson_parts["timestart"] = utils.get_time_by_order(
+                            pair_num + 1
+                        )
 
             # переходим к новой паре
             row += 1
-        # progress_bar.finish()
+
+        if self.is_debug:
+            progress_bar.finish()
 
     def parse_exam_col(self, col, ws, max_row, group_cell):
         """Разбор колонки расписания экзаменов"""
@@ -465,28 +497,22 @@ class VegaRaspParser:
         Разделяет пару на название дисциплины и доп информацию:
         подгруппа, недели, тип пары (лк, пр, лб)
         """
-        lesson_parts = {
-            "disc_name": "",
-            "sub_group": self.get_subgroup(lesson_cell),
-            "parity": 0,
-            "weeks_list": "null",
-            "weeks_text": "null",
-            "worktype": "null",
-        }
+        lesson_parts = LessonParts()
+
+        # получаем подгруппу
+        lesson_parts.sub_group = self.get_subgroup(lesson_cell)
 
         # получаем тип пары (лк, пр, лб)
         lesson_type = utils.get_lesson_type(lesson_cell)
-        worktype = utils.get_worktype(lesson_type)
-        lesson_parts["worktype"] = worktype
-        # получаем подгруппу
+        lesson_parts.worktype = utils.get_worktype(lesson_type)
         # получаем данные по неделям
         weeks_parts = self.get_weeks_parts(lesson_cell, is_magic)
-        lesson_parts["parity"] = weeks_parts["parity"]
-        lesson_parts["weeks_list"] = weeks_parts["weeks_list"]
-        lesson_parts["weeks_text"] = weeks_parts["weeks_text"]
+        lesson_parts.parity = weeks_parts["parity"]
+        lesson_parts.weeks_list = weeks_parts["weeks_list"]
+        lesson_parts.weeks_text = weeks_parts["weeks_text"]
 
         # удаляем лишнее и получаем название дисциплины
-        lesson_parts["disc_name"] = utils.get_disc_name(lesson_cell, lesson_parts)
+        lesson_parts.disc_name = utils.get_disc_name(lesson_cell, lesson_parts)
 
         return lesson_parts
 
@@ -506,6 +532,7 @@ class VegaRaspParser:
         if is_magic:
             last_week = start_week + WEEKS
             start_week = self.db.get_week(self.magic_first_stud_date, self.semcode)
+
         all_weeks = list(range(start_week, last_week))
 
         # ищем кр.(кроме таких-то недель)
@@ -518,23 +545,23 @@ class VegaRaspParser:
             ]
 
         weeks_text = ", ".join(map(str, all_weeks))
-        weeks_parts = {"parity": 0, "weeks_list": all_weeks, "weeks_text": weeks_text}
-
-        parity = utils.get_week_parity(lesson)
-        weeks_parts["parity"] = parity
+        week_parts = WeeksParts()
+        week_parts.weeks_list = all_weeks
+        week_parts.weeks_text = weeks_text
+        week_parts.parity = utils.get_week_parity(lesson)
 
         # генирируем массив всех недель
-        if parity != 0:
+        if week_parts.parity != 0:
             parity_list = ListData.PARITY.value
-            if start_week > parity:
+            if start_week > week_parts.parity:
                 is_even = start_week % 2
-                if parity % 2 != is_even:
+                if week_parts.parity % 2 != is_even:
                     start_week += 1
             else:
-                start_week = parity
+                start_week = week_parts.parity
 
             weeks_parts["weeks_list"] = list(range(start_week, last_week, 2))
-            weeks_parts["weeks_text"] = parity_list[parity - 1]
+            weeks_parts["weeks_text"] = parity_list[week_parts.parity - 1]
 
             # если была пометка кр. (кроме таких-то недель)
             if except_weeks is not None:
@@ -556,7 +583,7 @@ class VegaRaspParser:
             weeks_period = re.search(between_weeks, substring)
             if weeks_period is not None:
                 start_week, last_week = weeks_period.group().split("-")
-                weeks = list(range(int(start_week), int(last_week)+1))
+                weeks = list(range(int(start_week), int(last_week) + 1))
 
             weeks_parts["weeks_list"] = list(map(int, weeks))
 
@@ -689,7 +716,7 @@ class VegaRaspParser:
                 time_start = deepcopy(lesson_parts["timestart"])
 
                 # если поставили КОНЕЦ пары пораньше
-                h, m, _ = lesson_parts["timeend"].split(':')
+                h, m = lesson_parts["timeend"].split(":")
                 t_end_buf = time(hour=int(h), minute=int(m))
                 time_end = min(t_end_buf, time_end)
 

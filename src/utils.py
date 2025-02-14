@@ -11,18 +11,20 @@ from src.structs import ListData
 
 
 class Patterns(str, Enum):
-    """Часто используемые паттерны для регулярок"""
+    """Часто используемые паттерны регулярок"""
 
     WEEK_AND_TIME = r"""((I{1,2}н).*)?      # если указан номер недели
                         (\d{1,2}:\d{2})     # время начала пары
                         \D*                 # если формат ".. с .. до ..", то тут будет ".. до .."
                         (\d{2}:\d{2})       # время конца пары
-                    """ # использовать с re.VERBOSE
+                    """  # использовать с re.VERBOSE
+    SINGLE_HOUR_TIME = r"\d[:\-.]\d\d"  # время до 10 часов (одна цифра в часах)
+
     EXCEPT_WEEKS = r"кр.(\d(,\d))*н "
     ONLY_STUD_WEEKS = (
         r"\d+([,-](\s)?\d+)*н"  # если выбраны оперделенные недели для этой пары
     )
-    
+
     ANOTHER_SUBGROUPS = r"(\d*пг)"
 
 
@@ -204,7 +206,7 @@ def get_version(rasp_title: str):
     return version
 
 
-def get_worktype(disc_type: str):
+def get_worktype(disc_type: str) -> int:
     """Получить id типа дисциплины по строковому представлению:
     - 0-пр, 1-лк, 2-лб
     - 10-конс, 11-экз, 12-зaч, 13-зaч-д
@@ -273,9 +275,9 @@ def get_lesson_count(merged_cells, coord) -> int:
 
 def get_lesson_count_str(timestart: str, timeend: str) -> int:
     """Получить количество пар в промежутке времени"""
-    h, m, _ = timestart.split(":")
+    h, m = timestart.split(":")
     t_start = time(hour=int(h), minute=int(m))
-    h, m, _ = timeend.split(":")
+    h, m = timeend.split(":")
     t_end = time(hour=int(h), minute=int(m))
 
     start_order = get_order_by_time(t_start)
@@ -290,8 +292,14 @@ def get_time_from_lesson(lesson_cell: str) -> list:
 
     all_times = re.finditer(Patterns.WEEK_AND_TIME, lesson_cell, re.VERBOSE)
     for t in all_times:
+        timestart = t.group(3)
+
+        # если время имеет вид "_9:30" -> делаем "09:30"
+        if re.match(Patterns.SINGLE_HOUR_TIME, timestart):
+            timestart = f"0{timestart}"
+
         time_dict = {
-            "timestart": t.group(3),
+            "timestart": timestart,
             "timeend": t.group(4),
             "weeks": t.group(2),
         }

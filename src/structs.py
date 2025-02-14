@@ -3,6 +3,8 @@
 from enum import Enum
 from openpyxl.styles.colors import Color
 
+from dataclasses import dataclass
+
 from pydantic import BaseModel
 
 
@@ -54,3 +56,20 @@ class ListData(Enum):
     SUBGROUPS = ["(1пг)", "(2пг)"]
     PARITY = ["Iн", "IIн"]
     WEEK_STRS = ["ВС", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"]
+
+@dataclass
+class LessonParts:
+    """Части ячейки названия пары"""
+    disc_name: str = None
+    sub_group: int = 0
+    parity: int = 0
+    weeks_list: list[str] = None
+    weeks_text: str = None
+    worktype: int = 0
+
+@dataclass
+class WeeksParts:
+    """Сведения по неделям"""
+    parity: int = 0
+    weeks_list: list[str] = None
+    weeks_text: str = None

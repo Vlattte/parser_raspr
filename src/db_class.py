@@ -6,6 +6,8 @@ from os import getenv
 from datetime import datetime
 from datetime import timedelta
 
+import re
+
 from psycopg2 import connect
 from psycopg2 import Error
 from dotenv import load_dotenv
@@ -226,8 +228,9 @@ class Database:
         rasp7_rooms_id = self.send_request(query, True)
         return rasp7_rooms_id
 
-    def clear_rasp_data_between_weeks(self, semcode: int, is_semestr: bool, 
-                                      start_date: datetime, end_date: datetime):
+    def clear_rasp_data_between_weeks(
+        self, semcode: int, is_semestr: bool, start_date: datetime, end_date: datetime
+    ):
         """Очистка промежутка недель от данных, чтобы в них залить новую версию
         Затрагивает таблицы, которые зависят от rasp18_id и саму sc_rasp18"""
         # включает в себя пр, лк, лб
@@ -241,9 +244,10 @@ class Database:
         day_params = {"semcode": semcode, "day": end_date}
         end_day_id = self.get_id("sc_rasp18_days", day_params)
 
-        if start_date > end_date or \
-             start_day_id is None or end_day_id is None:
-            raise ValueError(f"Ошибка параметров OVERWRITE_DAY: начало {start_date}, конец {end_date}")
+        if start_date > end_date or start_day_id is None or end_day_id is None:
+            raise ValueError(
+                f"Ошибка параметров OVERWRITE_DAY: начало {start_date}, конец {end_date}"
+            )
 
         query = f"""DELETE FROM sc_rasp18
         where semcode = {semcode} AND worktype {worktype_clause}  
@@ -313,6 +317,7 @@ class Database:
                 VALUES ({semcode}, date('{day}'), {weekday}, {week})  \
                 ON CONFLICT DO NOTHING RETURNING id;"
         rasp18_days_id = self.send_request(query, True)
+        
         return rasp18_days_id
 
     def set_rasp18(
@@ -326,7 +331,7 @@ class Database:
         timestart: str,
         timeend: str,
         prep_id: int,
-        room: str
+        room: str,
     ):
         """
         ячейка в таблице расписания
@@ -340,11 +345,14 @@ class Database:
         table_name = "sc_rasp18"
 
         if day_id is None:
-            raise ValueError("Ошибка в датах! Невозможно продолжать парсинг, устраните ошибки с параметрами START_DATE и END_DATE")
+            raise ValueError(
+                "Ошибка в датах! Невозможно продолжать парсинг, устраните ошибки с параметрами START_DATE и END_DATE"
+            )
 
         # только часы и минуты, секунды образаем
-        timestart_hm = timestart[:-3]
-        timeend_hm = timeend[:-3]
+        hm_format = r"(\d{1,2}[:\-.]\d\d)[:\-.]\d\d"
+        timestart_hm = re.sub(hm_format, r"\1", timestart)
+        timeend_hm = re.sub(hm_format, r"\1", timeend)
 
         if prep_id is not None and room is not None:
             exists_query = f"""

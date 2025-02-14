@@ -22,6 +22,7 @@ app = FastAPI()
 
 load_dotenv()
 
+
 def is_params_good(cmd_params: CmdParams) -> bool:
     """Проверка на корректность переданных аргументов"""
     print(cmd_params.sem_filename)
@@ -150,12 +151,12 @@ async def run_parser(cmd_params: CmdParams, file: UploadFile = None):
     return Response(status_code=200)
 
 
-# def run_parser(cmd_params: CmdParams = None):
-#     """Запускает парсинг"""
-#     if cmd_params is None:
-#         cmd_params = parse_cmd_argument()
-#     parser = VegaRaspParser(cmd_params)
-#     parser.parse()
+def run_local_parser(cmd_params: CmdParams = None):
+    """Запускает парсинг"""
+    if cmd_params is None:
+        cmd_params = parse_cmd_argument()
+    parser = VegaRaspParser(cmd_params)
+    parser.parse()
 
 
 async def main():
@@ -176,4 +177,14 @@ async def main():
 
 
 if __name__ == "__main__":
-    uvicorn.run("run_parser:app", host="127.0.0.1", port=8000, reload=True)
+    #####################
+    # ЗАПУСК ВЕБ ВЕРСИИ #
+    #####################
+    # uvicorn.run("run_parser:app", host="127.0.0.1", port=8000, reload=True)
+
+    #####################
+    # ЗАПУСК ИЗ КОНСОЛИ #
+    #####################
+    # если в консоли ничего не передали, будет использовать .env файл
+    params = parse_cmd_argument()
+    run_local_parser(params)
