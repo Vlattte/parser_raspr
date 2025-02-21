@@ -5,5 +5,5 @@ progress
 fastapi
 uvicorn
 python-multipart
-fastapi-utils
+flask
 typing-inspect

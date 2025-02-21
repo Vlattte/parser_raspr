@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 class CmdParams(BaseModel):
     """Параметры командной строки, тоже самое, что в .env"""
+
     # очистка ВСЕХ таблиц перед запуском
     pre_clear: bool = False
 
@@ -58,8 +59,16 @@ class ListData(Enum):
     WEEK_STRS = ["ВС", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"]
 
 @dataclass
+class GroupParts:
+    """Части ячейки названия группы"""
+    course: str = None
+    name: str = None
+    sub_group: int = -1
+
+@dataclass
 class LessonParts:
     """Части ячейки названия пары"""
+
     disc_name: str = None
     sub_group: int = 0
     parity: int = 0
@@ -67,9 +76,23 @@ class LessonParts:
     weeks_text: str = None
     worktype: int = 0
 
+    timestart: str = None
+    timeend: str = None
+
+
 @dataclass
 class WeeksParts:
     """Сведения по неделям"""
+
     parity: int = 0
     weeks_list: list[str] = None
     weeks_text: str = None
+
+
+@dataclass
+class TimeFromLessonCell:
+    """Время и недели из сложных ячеек пар (например, НИР Iн 9:00-13:00)"""
+    timestart: str = None   # начало пары
+    timeend: str = None     # конец пары
+
+    weeks: str = None       # недели, по которым пара в это время

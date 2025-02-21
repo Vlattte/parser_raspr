@@ -27,6 +27,8 @@ from src.db_class import Database
 from src.structs import CmdParams
 from src.structs import ListData
 from src.structs import CellColors
+
+# from src.structs import GroupParts
 from src.structs import LessonParts
 from src.structs import WeeksParts
 
@@ -244,7 +246,7 @@ class VegaRaspParser:
     def parse_default_col(self, col, ws, max_row, group_cell, merged_cells):
         """Разбор колонки группы"""
         group_parts = utils.get_group_parts(group_cell)
-        group_name = group_parts["name"]
+        group_name = group_parts.name
         group_id = self.db.set_group(group_name)
 
         order = 1
@@ -304,8 +306,8 @@ class VegaRaspParser:
             lesson_parts = self.get_lesson_parts(lesson_cell, is_magic)
 
             # если подгруппа ВЕГИ или ВМ, то переписываем
-            if group_parts["sub_group"] != -1:
-                lesson_parts["sub_group"] = group_parts["sub_group"]
+            if group_parts.sub_group != -1:
+                lesson_parts.sub_group = group_parts.sub_group
 
             # если элементы lesson_parts массивы, то для каждго из них делем записи
             complex_len = 1
@@ -319,17 +321,17 @@ class VegaRaspParser:
             for comp_record in range(complex_len):
                 if len(time_parts) > 0:
                     t = time_parts[comp_record]
-                    lesson_parts["timestart"] = t["timestart"]
-                    lesson_parts["timeend"] = t["timeend"]
-                    if t["weeks"] is not None:
-                        weeks_parts = self.get_weeks_parts(t["weeks"], is_magic)
+                    lesson_parts.timestart = t.timestart
+                    lesson_parts.timeend = t.timeend
+                    if t.weeks is not None:
+                        week_parts = self.get_weeks_parts(t.weeks, is_magic)
 
-                        lesson_parts["parity"] = weeks_parts["parity"]
-                        lesson_parts["weeks_list"] = weeks_parts["weeks_list"]
-                        lesson_parts["weeks_text"] = weeks_parts["weeks_text"]
+                        lesson_parts.parity = week_parts.parity
+                        lesson_parts.weeks_list = week_parts.weeks_list
+                        lesson_parts.weeks_text = week_parts.weeks_text
 
                     lesson_count = utils.get_lesson_count_str(
-                        lesson_parts["timestart"], lesson_parts["timeend"]
+                        lesson_parts.timestart, lesson_parts.timeend
                     )
 
                 for pair_num in range(order, order + lesson_count):
@@ -345,8 +347,8 @@ class VegaRaspParser:
                     )
 
                     # смещение, если пара длится несколько пар
-                    if "timestart" in lesson_parts:
-                        lesson_parts["timestart"] = utils.get_time_by_order(
+                    if lesson_parts.timestart is not None:
+                        lesson_parts.timestart = utils.get_time_by_order(
                             pair_num + 1
                         )
 
@@ -492,7 +494,7 @@ class VegaRaspParser:
 
         # progress_bar.finish()
 
-    def get_lesson_parts(self, lesson_cell: str, is_magic: bool) -> dict:
+    def get_lesson_parts(self, lesson_cell: str, is_magic: bool) -> LessonParts:
         """
         Разделяет пару на название дисциплины и доп информацию:
         подгруппа, недели, тип пары (лк, пр, лб)
@@ -507,9 +509,9 @@ class VegaRaspParser:
         lesson_parts.worktype = utils.get_worktype(lesson_type)
         # получаем данные по неделям
         weeks_parts = self.get_weeks_parts(lesson_cell, is_magic)
-        lesson_parts.parity = weeks_parts["parity"]
-        lesson_parts.weeks_list = weeks_parts["weeks_list"]
-        lesson_parts.weeks_text = weeks_parts["weeks_text"]
+        lesson_parts.parity = weeks_parts.parity
+        lesson_parts.weeks_list = weeks_parts.weeks_list
+        lesson_parts.weeks_text = weeks_parts.weeks_text
 
         # удаляем лишнее и получаем название дисциплины
         lesson_parts.disc_name = utils.get_disc_name(lesson_cell, lesson_parts)
@@ -524,7 +526,8 @@ class VegaRaspParser:
                 return subgroups.index(sub_gr) + 1
         return 0
 
-    def get_weeks_parts(self, lesson: str, is_magic: bool) -> dict:
+    # TODO упростить функцию
+    def get_weeks_parts(self, lesson: LessonParts, is_magic: bool) -> WeeksParts:
         """Получить номера недель, когда будет пара"""
         last_week = WEEKS
         start_week = 1
@@ -560,22 +563,22 @@ class VegaRaspParser:
             else:
                 start_week = week_parts.parity
 
-            weeks_parts["weeks_list"] = list(range(start_week, last_week, 2))
-            weeks_parts["weeks_text"] = parity_list[week_parts.parity - 1]
+            week_parts.weeks_list = list(range(start_week, last_week, 2))
+            week_parts.weeks_text = parity_list[week_parts.parity - 1]
 
             # если была пометка кр. (кроме таких-то недель)
             if except_weeks is not None:
-                weeks_parts["weeks_list"] = [
-                    w for w in weeks_parts["weeks_list"] if w not in except_weeks
+                week_parts.weeks_list = [
+                    w for w in week_parts.weeks_list if w not in except_weeks
                 ]
-                weeks_text = ", ".join(map(str, weeks_parts["weeks_list"]))
-            return weeks_parts
+                weeks_text = ", ".join(map(str, week_parts.weeks_list))
+            return week_parts
 
         # проверяем наличие недельного распределения
         substring = re.search(utils.Patterns.ONLY_STUD_WEEKS, lesson)
         if substring is not None and except_weeks is None:
             substring = substring.group().removesuffix("н")
-            weeks_parts["weeks_text"] = substring
+            week_parts.weeks_text = substring
             weeks = substring.split(",")
 
             # если указан промежуток недель (5-8н)
@@ -585,9 +588,9 @@ class VegaRaspParser:
                 start_week, last_week = weeks_period.group().split("-")
                 weeks = list(range(int(start_week), int(last_week) + 1))
 
-            weeks_parts["weeks_list"] = list(map(int, weeks))
+            week_parts.weeks_list = list(map(int, weeks))
 
-        return weeks_parts
+        return week_parts
 
     def get_semcode(self, title: str) -> int:
         """Получение кода семестра по заголовку"""
@@ -611,7 +614,7 @@ class VegaRaspParser:
     # TODO переименовать
     def fill_group_day_db(
         self,
-        lesson_parts: dict,
+        lesson_parts: LessonParts,
         teacher: str,
         order: int,
         weekday: str,
@@ -624,7 +627,7 @@ class VegaRaspParser:
         # таблица дисциплин
         disc_id = self.db.set_disc(
             title="null",
-            shorttitle=lesson_parts["disc_name"],
+            shorttitle=lesson_parts.disc_name,
             department_id=department_id,
             varmask="null",
         )
@@ -638,13 +641,13 @@ class VegaRaspParser:
             disc_id=disc_id,
             weekday=weekday_num,
             pair=order,
-            weeksarray=lesson_parts["weeks_list"],
-            weekstext=lesson_parts["weeks_text"],
+            weeksarray=lesson_parts.weeks_list,
+            weekstext=lesson_parts.weeks_text,
         )
 
         # таблица связи пары
         self.db.set_rasp7_groups(
-            rasp7_id=rasp7_id, group_id=group_id, sub_group=lesson_parts["sub_group"]
+            rasp7_id=rasp7_id, group_id=group_id, sub_group=lesson_parts.sub_group
         )
 
         # распределение пар по преподавателям
@@ -691,7 +694,7 @@ class VegaRaspParser:
             "weekday": weekday_num,
             "week": start_week,
         }
-        for week in lesson_parts["weeks_list"]:
+        for week in lesson_parts.weeks_list:
             if week < start_week:
                 continue
             # считаем дату пары
@@ -711,12 +714,12 @@ class VegaRaspParser:
             time_end = utils.time_in_90_minutes(time_start)
 
             # если было указано какое-то особое время, то записываем
-            if "timestart" in lesson_parts:
+            if lesson_parts.timestart is not None:
                 # если поставили НАЧАЛО пары пораньше
-                time_start = deepcopy(lesson_parts["timestart"])
+                time_start = deepcopy(lesson_parts.timestart)
 
                 # если поставили КОНЕЦ пары пораньше
-                h, m = lesson_parts["timeend"].split(":")
+                h, m = lesson_parts.timeend.split(":")
                 t_end_buf = time(hour=int(h), minute=int(m))
                 time_end = min(t_end_buf, time_end)
 
@@ -725,7 +728,7 @@ class VegaRaspParser:
                 day_id=day_id,
                 pair=order,
                 kind=0,
-                worktype=lesson_parts["worktype"],
+                worktype=lesson_parts.worktype,
                 disc_id=disc_id,
                 timestart=str(time_start),
                 timeend=str(time_end),
@@ -735,7 +738,7 @@ class VegaRaspParser:
             if rasp18_id is None:
                 return
 
-            self.db.set_rasp18_groups(rasp18_id, group_id, lesson_parts["sub_group"])
+            self.db.set_rasp18_groups(rasp18_id, group_id, lesson_parts.sub_group)
             if prep_id is not None:
                 self.db.set_rasp18_preps(rasp18_id, prep_id)
             if room is not None:

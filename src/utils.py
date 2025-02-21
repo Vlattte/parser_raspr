@@ -8,6 +8,9 @@ from copy import deepcopy
 from datetime import datetime, time
 
 from src.structs import ListData
+from src.structs import GroupParts
+from src.structs import LessonParts
+from src.structs import TimeFromLessonCell
 
 
 class Patterns(str, Enum):
@@ -28,15 +31,15 @@ class Patterns(str, Enum):
     ANOTHER_SUBGROUPS = r"(\d*пг)"
 
 
-def get_group_parts(group_cell: str) -> dict:
+def get_group_parts(group_cell: str) -> GroupParts:
     """Получить название и доп информацию по группе"""
     group_name = group_cell
-    group_parts = {"course": -1, "name": "", "sub_group": -1}
+    group_parts = GroupParts()
 
     # если есть подстрока с курсов, вытаскиваем
     kurs = re.search(r"\d курс", group_cell)
     if kurs is not None:
-        group_parts["course"] = kurs.group()
+        group_parts.course = kurs.group()
         group_name = group_name.removeprefix(kurs)
 
     # если есть подстрока с кафедрой, пишем как подгруппу
@@ -44,13 +47,13 @@ def get_group_parts(group_cell: str) -> dict:
     if dep is not None:
         dep_name = dep.group().upper()
         if "ВЕГА" in dep_name:
-            group_parts["sub_group"] = 1
+            group_parts.sub_group = 1
         elif "ВМ" in dep_name:
-            group_parts["sub_group"] = 2
+            group_parts.sub_group = 2
         group_name = group_name.removesuffix(dep.group())
 
     group_name = group_name.replace(" ", "")
-    group_parts["name"] = group_name
+    group_parts.name = group_name
     return group_parts
 
 
@@ -286,25 +289,24 @@ def get_lesson_count_str(timestart: str, timeend: str) -> int:
     return lesson_count
 
 
-def get_time_from_lesson(lesson_cell: str) -> list:
+def get_time_from_lesson(lesson_cell: str) -> list[TimeFromLessonCell]:
     """Если в названии пары есть время, вытаскиваем"""
     time_parts = []
 
     all_times = re.finditer(Patterns.WEEK_AND_TIME, lesson_cell, re.VERBOSE)
     for t in all_times:
+        cur_time = TimeFromLessonCell()
         timestart = t.group(3)
 
         # если время имеет вид "_9:30" -> делаем "09:30"
         if re.match(Patterns.SINGLE_HOUR_TIME, timestart):
             timestart = f"0{timestart}"
 
-        time_dict = {
-            "timestart": timestart,
-            "timeend": t.group(4),
-            "weeks": t.group(2),
-        }
+        cur_time.timestart = timestart
+        cur_time.timeend = t.group(4)
+        cur_time.weeks = t.group(2)
 
-        time_parts.append(time_dict)
+        time_parts.append(cur_time)
     return time_parts
 
 
@@ -317,7 +319,7 @@ def get_week_parity(lesson: str) -> int:
     return 0
 
 
-def get_disc_name(lesson: str, lesson_parts: dict) -> str:
+def get_disc_name(lesson: str, lesson_parts: LessonParts) -> str:
     """Убрать лишнее из названия дисциплины и вернуть только само название"""
     disc_name = lesson
 
@@ -328,21 +330,21 @@ def get_disc_name(lesson: str, lesson_parts: dict) -> str:
     # убираем недели
     disc_name = re.sub(Patterns.ONLY_STUD_WEEKS, r"", disc_name)
 
-    if lesson_parts["parity"] == 0 and len(lesson_parts["weeks_list"]) < 16:
-        disc_name = disc_name.removeprefix(lesson_parts["weeks_text"])
-    elif lesson_parts["parity"] > 0:
+    if lesson_parts.parity == 0 and len(lesson_parts.weeks_list) < 16:
+        disc_name = disc_name.removeprefix(lesson_parts.weeks_text)
+    elif lesson_parts.parity > 0:
         parity_list = ListData.PARITY.value
-        parity_str = parity_list[lesson_parts["parity"] - 1]
+        parity_str = parity_list[lesson_parts.parity - 1]
         disc_name = disc_name.removeprefix(parity_str)
 
     # убираем тип пары
-    if lesson_parts["worktype"] != "пр":
+    if lesson_parts.worktype != "пр":
         disc_name = disc_name.removesuffix("лк")
 
     # убираем подгруппу
-    if lesson_parts["sub_group"] != 0:
+    if lesson_parts.sub_group != 0:
         subgroups = ListData.SUBGROUPS.value
-        sub_group_str = subgroups[lesson_parts["sub_group"] - 1]
+        sub_group_str = subgroups[lesson_parts.sub_group - 1]
         disc_name = disc_name.removesuffix(sub_group_str)
 
     # чтобы избежать опечаток с пробелами, добавляем после всех точек пробел

@@ -6,6 +6,8 @@ from os import getenv
 from os import mkdir
 from os import path
 
+from re import sub as regex_sub
+
 import uvicorn
 import asyncio
 
@@ -15,12 +17,31 @@ from fastapi import FastAPI
 from fastapi import UploadFile
 from fastapi.responses import Response
 
+# from fastapi import
+
 from src.parser import VegaRaspParser
 from src.structs import CmdParams
 
-app = FastAPI()
-
 load_dotenv()
+
+# swagger_ui_default_parameters: Annotated[
+#     dict[str, Any],
+#     Doc(
+#         """
+#         Default configurations for Swagger UI.
+
+#         You can use it as a template to add any other configurations needed.
+#         """
+#     ),
+# ] = {
+#     "dom_id": "#swagger-ui",
+#     "layout": "BaseLayout",
+#     "deepLinking": True,
+#     "showExtensions": True,
+#     "showCommonExtensions": True,
+# }
+
+app = FastAPI(title="API парсера расписания")
 
 
 def is_params_good(cmd_params: CmdParams) -> bool:
@@ -95,25 +116,17 @@ def parse_cmd_argument() -> CmdParams | None:
     return None
 
 
-# @cbv(router)
-# class Server:
-#     """Получение запросов для работы парсера"""
-
-# def __init__(self):
-#     """Инициализация"""
-#     print("INIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIT")
-#     self.cmd_params = CmdParams()
-#     self.sem_filename = None
-#     self.exam_filename = None
-
-#     if not path.isdir(self.folder_path):
-#         mkdir(self.folder_path)
-
-
-@app.post("/upload-rasp-file")
+@app.post(
+    "/upload",
+    summary="Загрузка расписания",
+    description=(
+        "Загрузка файла расписания и сохранение его в папке rasp_files. "
+        + "Принимает файл в формате xlsx"
+    ),
+)
 async def upload_file(file: UploadFile):
     """Загрузка файла для чтения"""
-    print(f"Получил файл семестра {file.filename}")
+    print(f"Получил новый файл {file.filename}")
     status = await download_file(file)
     return status
 
@@ -135,9 +148,28 @@ async def download_file(file: UploadFile):
     return Response(status_code=200)
 
 
-@app.post("/run_parser")
+@app.post("/run_parser", summary="Установка параметров парсера и запуск")
 async def run_parser(cmd_params: CmdParams, file: UploadFile = None):
-    """Установка параметров парсера и запуск"""
+    """
+    # Запуск парсера с заданными параметрами:
+
+    ## Обязательные параметры:
+
+    - **pre_clear: bool** (default: False) - очистка таблиц связанных с расписанием перед загрузкой расписания. Чтобы изменить скрипт очистки, нужно изменить скрипт в файле `sql_scripts/clear_script.sql`
+    - **is_sem: bool** (default: True) - выбранный файл будет расписанием учебного семестра
+    - **filename: str** - путь до файла, который будет распаршен (если файл был загружен через функцию `download_file`, то достаточно указать путь `__rasp_files/file_name.xslx__`)
+    - **start_date: str** - дата первого учебного дня в семестре(в сессии). От него будет считаться учебные недели, он будет считаться первм учебным днем у бакалавров(и у магистров, если не задан параметр `magic_start_date`), будет днем, от которого будут писаться дни семестра из файла в таблицу `sc_rasp18_days`
+    - **end_date: str** - дата последнего учебного дня(последнего экзамена). До этой даты будут записаны дни в таблицу `sc_rasp18_days`, после этой даты не будут записаны никакие пары или экзамены.
+
+    ## Дополнительные параметры:
+
+    - **magic_start_date: str** - первый учебный день магистров. У групп магистров пары в БД будут писаться начиная от этой даты + 16 недель
+
+    - **overwrite_date_start: str** (default: start_date) - дата, С которой нужно переписать уже имеющее расписание(или написать новое).
+    - **overwrite_date_end: str** (default: end_date) - дата, ДО которой нужно переписать уже имеющее расписание(или написать новое).
+
+    _Вне промежутка [`overwrite_date_start`, `overwrite_date_end`] никаких записей (кроме `sc_rasp18_days`, которая пишется строго по [`start_date`, `end_date`])._
+    """
     if not is_params_good(cmd_params):
         return Response(status_code=400)
 
@@ -180,11 +212,11 @@ if __name__ == "__main__":
     #####################
     # ЗАПУСК ВЕБ ВЕРСИИ #
     #####################
-    # uvicorn.run("run_parser:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("run_parser:app", host="127.0.0.1", port=8000, reload=True)
 
     #####################
     # ЗАПУСК ИЗ КОНСОЛИ #
     #####################
     # если в консоли ничего не передали, будет использовать .env файл
-    params = parse_cmd_argument()
-    run_local_parser(params)
+    # params = parse_cmd_argument()
+    # run_local_parser(params)

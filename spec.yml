@@ -1,0 +1,65 @@
+openapi: 3.0.0
+info:
+  description: "API"
+  version: "1.0.0"
+  title: "API"
+paths:
+
+  /upload:
+    get:
+      tags:
+        - Mock
+      operationId: mock
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: "Successful response"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MockDataResponse'
+
+    post:
+      tags:
+        - Mock
+      operationId: add_mock
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMockData'
+      responses:
+        '200':
+          description: "Successful response"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseCreateMock'
+
+components:
+  schemas:
+    MockDataResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        info:
+          type: string
+
+    CreateMockData:
+      type: object
+      properties:
+        info:
+          type: string
+
+    ResponseCreateMock:
+      type: object
+      properties:
+        id:
+          type: integer
