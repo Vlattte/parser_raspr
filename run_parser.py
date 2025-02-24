@@ -148,6 +148,205 @@ async def download_file(file: UploadFile):
     return Response(status_code=200)
 
 
+@app.post("/parse_exam", summary="Парсинг файла экзамена")
+async def parse_exam(
+    start_date: str, end_date: str, file_path: str = None, file: UploadFile = None
+):
+    """
+    # Парсинг файла экзамена
+
+    ## Обязательные параметры:
+    - **start_date** - день первого ЗАЧЕТА
+    - **end_date** - день последнего ЭКЗАМЕНА
+
+    _Даты писать в строковом виде в формате YYYY-MM-DD (год-месяц-день)_
+    
+    _Все даты включительно_
+
+    ## Параметры на выбор (если ни один не указан, вернется ошибка. Если загружены оба, то **file_path** возьмется у **file**)
+    - **file_path** - путь до файла с расписанием экзаменов
+    - **file** - файл экзаменов, который нужно распарсить, если он будет загружен, то **file_path** будет взят у него
+    """
+    if file is None and file_path is None:
+        print("Не выбран ни путь до файла, ни сам файл")
+        return Response(status_code=400)
+
+    file_name = file_path
+    if file is None:
+        download_status = download_file(file)
+        if download_status.status_code != 200:
+            return download_status
+
+        file_name = file.filename
+
+    cmd_params = CmdParams()
+    cmd_params.is_sem = False
+    cmd_params.start_date = start_date
+    cmd_params.end_date = end_date
+    cmd_params.filename = file_name
+
+    parser = VegaRaspParser(cmd_params)
+    parser.parse()
+    return Response(status_code=200)
+
+
+@app.post("/parse_sem", summary="Парсинг файла расписания семестра")
+async def parse_sem(
+    start_date: str,
+    end_date: str,
+    file_path: str = None,
+    file: UploadFile = None,
+    magic_start_date: str = None,
+):
+    """
+    # Парсинг файла экзамена
+
+    ## Обязательные параметры:
+    - **start_date** - день первого семестра для БАКАЛАВРИАТА
+    - **end_date** - день последнего учебного дня
+
+    _Даты писать в строковом виде в формате YYYY-MM-DD (год-месяц-день)_
+    
+    _Все даты включительно_
+
+    ## Параметры на выбор (если ни один не указан, вернется ошибка. Если загружены оба, то **file_path** возьмется у **file**)
+    - **file_path** - путь до файла с расписанием семестра
+    - **file** - файл семестра, который нужно распарсить, если он будет загружен, то **file_path** будет взят у него
+
+    ## Не обязательные параметры:
+    - **magic_start_date** - первый день обучения магистров (если не задан расписание магистров начнется как у бакалавров)
+    """
+    if file is None and file_path is None:
+        print("Не выбран ни путь до файла, ни сам файл")
+        return Response(status_code=400)
+
+    file_name = file_path
+    if file is None:
+        download_status = download_file(file)
+        if download_status.status_code != 200:
+            return download_status
+
+        file_name = file.filename
+
+    cmd_params = CmdParams()
+    cmd_params.is_sem = True
+    cmd_params.start_date = start_date
+    cmd_params.end_date = end_date
+    cmd_params.filename = file_name
+    if magic_start_date is not None:
+        cmd_params.magic_start_date = magic_start_date
+
+    parser = VegaRaspParser(cmd_params)
+    parser.parse()
+    return Response(status_code=200)
+
+@app.post("/overwrite_sem", summary="Переписать промежуток дат на новое расписание")
+async def overwrite_sem(
+    start_date: str,
+    end_date: str,
+    overwrite_start_date: str,
+    overwrite_end_date: str,
+    file_path: str = None,
+    file: UploadFile = None,
+    magic_start_date: str = None,
+):
+    """
+    # Парсинг файла экзамена
+
+    ## Обязательные параметры:
+    - **start_date** - день первого семестра для БАКАЛАВРИАТА
+    - **end_date** - день последнего учебного дня
+    - **overwrite_start_date** - день, С КОТОРОГО переписать расписание на указанное
+    - **overwrite_end_date** - день, ДО КОТОРОГО переписать расписание на указанное
+
+    _Даты писать в строковом виде в формате YYYY-MM-DD (год-месяц-день)_
+    
+    _Все даты включительно_
+
+    ## Параметры на выбор (если ни один не указан, вернется ошибка. Если загружены оба, то **file_path** возьмется у **file**)
+    - **file_path** - путь до файла с расписанием семестра
+    - **file** - файл семестра, который нужно распарсить, если он будет загружен, то **file_path** будет взят у него
+
+    ## Не обязательные параметры:
+    - **magic_start_date** - первый день обучения магистров (если не задан расписание магистров начнется как у бакалавров)
+    """
+    if file is None and file_path is None:
+        print("Не выбран ни путь до файла, ни сам файл")
+        return Response(status_code=400)
+
+    file_name = file_path
+    if file is None:
+        download_status = download_file(file)
+        if download_status.status_code != 200:
+            return download_status
+
+        file_name = file.filename
+
+    cmd_params = CmdParams()
+    cmd_params.is_sem = True
+    cmd_params.start_date = start_date
+    cmd_params.end_date = end_date
+    cmd_params.overwrite_start_date = overwrite_start_date
+    cmd_params.overwrite_end_date = overwrite_end_date
+    cmd_params.filename = file_name
+    if magic_start_date is not None:
+        cmd_params.magic_start_date = magic_start_date
+
+    parser = VegaRaspParser(cmd_params)
+    parser.parse()
+    return Response(status_code=200)
+
+@app.post("/overwrite_exams", summary="Переписать промежуток дат экзаменов на новое расписание")
+async def overwrite_exams(
+    start_date: str,
+    end_date: str,
+    overwrite_start_date: str,
+    overwrite_end_date: str,
+    file_path: str = None,
+    file: UploadFile = None
+):
+    """
+    # Парсинг файла экзамена
+
+    ## Обязательные параметры:
+    - **start_date** - день первого ЗАЧЕТА
+    - **end_date** - день последнего ЭКЗАМЕНА
+    - **overwrite_start_date** - день, С КОТОРОГО переписать расписание на указанное
+    - **overwrite_end_date** - день, ДО КОТОРОГО переписать расписание на указанное
+
+    _Даты писать в строковом виде в формате YYYY-MM-DD (год-месяц-день)_
+    
+    _Все даты включительно_
+
+    ## Параметры на выбор (если ни один не указан, вернется ошибка. Если загружены оба, то **file_path** возьмется у **file**)
+    - **file_path** - путь до файла с расписанием семестра
+    - **file** - файл семестра, который нужно распарсить, если он будет загружен, то **file_path** будет взят у него
+    """
+    if file is None and file_path is None:
+        print("Не выбран ни путь до файла, ни сам файл")
+        return Response(status_code=400)
+
+    file_name = file_path
+    if file is None:
+        download_status = download_file(file)
+        if download_status.status_code != 200:
+            return download_status
+
+        file_name = file.filename
+
+    cmd_params = CmdParams()
+    cmd_params.is_sem = False
+    cmd_params.start_date = start_date
+    cmd_params.end_date = end_date
+    cmd_params.overwrite_start_date = overwrite_start_date
+    cmd_params.overwrite_end_date = overwrite_end_date
+    cmd_params.filename = file_name
+
+    parser = VegaRaspParser(cmd_params)
+    parser.parse()
+    return Response(status_code=200)
+
+
 @app.post("/run_parser", summary="Установка параметров парсера и запуск")
 async def run_parser(cmd_params: CmdParams, file: UploadFile = None):
     """
