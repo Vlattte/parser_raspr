@@ -38,6 +38,7 @@ class CellColors(list, Enum):
     OTHERS_DEP_COLORS = [
         Color(rgb="FFD1F3FF"),
         Color(rgb="00000000"),
+        Color(rgb="FF000000")
     ]  # ведут другие кафедры
     VM_DEP_COLORS = [Color(rgb="FFFFF56D"), Color(rgb="FFFFE15A")]  # ведет ВМ
     VEGA_DEP_COLORS = [
@@ -46,6 +47,7 @@ class CellColors(list, Enum):
         Color(rgb="FFF4FF67"),
         Color(rgb="FFF0FF29"),
         Color(rgb="FFE5FF99"),
+        Color(rgb="FFF79646")
     ]  # ведет ВЕГА/только для ВЕГИ
     ONLY_VM_DEP_COLORS = [Color(rgb="FFFFCCFF")]  # только для подгруппы ВМ
     ONLY_VEGA_DEP_COLORS = [Color(rgb="FFCCFF66")]  # только для подгруппы ВЕГИ

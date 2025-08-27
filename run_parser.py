@@ -411,11 +411,11 @@ if __name__ == "__main__":
     #####################
     # ЗАПУСК ВЕБ ВЕРСИИ #
     #####################
-    uvicorn.run("run_parser:app", host="127.0.0.1", port=8000, reload=True)
+    # uvicorn.run("run_parser:app", host="127.0.0.1", port=8000, reload=True)
 
     #####################
     # ЗАПУСК ИЗ КОНСОЛИ #
     #####################
     # если в консоли ничего не передали, будет использовать .env файл
-    # params = parse_cmd_argument()
-    # run_local_parser(params)
+    params = parse_cmd_argument()
+    run_local_parser(params)

@@ -178,6 +178,45 @@ def get_time_by_order(order):
     return time_start
 
 
+def get_cell_color(ws, row, col):
+    cell = ws.cell(row=row, column=col)
+    fill = cell.fill
+
+    color = fill.start_color
+
+    if isinstance(color.rgb, str):
+        # Это обычный RGB цвет
+        if isinstance(color.rgb, str):
+            return color.rgb
+        else:
+            return str(color.rgb)
+    # Проверяем, является ли цвет тематическим
+    elif isinstance(color.theme, int):
+        # Это тематический цвет - получаем через тему
+        return get_theme_color(color.theme, color.tint)
+    else:
+        return None
+
+
+def get_theme_color(theme_index, tint=0):
+    """Преобразует тематический цвет в RGB"""
+    # Стандартная палитра тематических цветов Excel
+    theme_colors = [
+        'FF000000',  # 0: Dark 1
+        'FFFFFFFF',  # 1: Light 1
+        'FFEEECE1',  # 2: Dark 2 (персиковый обычно здесь)
+        'FF1F497D',  # 3: Light 2
+        'FF4F81BD',  # 4: Accent 1
+        'FFC0504D',  # 5: Accent 2
+        'FF9BBB59',  # 6: Accent 3
+        'FF8064A2',  # 7: Accent 4
+        'FF4BACC6',  # 8: Accent 5
+        'FFF79646',  # 9: Accent 6
+    ]
+    if theme_index < len(theme_colors):
+        return theme_colors[theme_index]
+    return 'FFFFFFFF'  # Белый по умолчанию
+
 def time_in_90_minutes(time_start):
     """Получить время через 1.5 часа"""
     end_minutes = (time_start.minute + 30) % 60

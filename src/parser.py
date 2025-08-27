@@ -298,9 +298,9 @@ class VegaRaspParser:
             coord = ws.cell(row, col).coordinate
             lesson_count = utils.get_lesson_count(merged_cells, coord)
 
-            # по цвету определяем пренадлежность к кафедре
-            cur_color = ws.cell(row, col).fill.start_color.rgb
-            department_id = self.get_dep_id(cel_color=cur_color)
+            # по цвету определяем принадлежность к кафедре
+            cur_color = utils.get_cell_color(ws, row, col)
+            department_id = self.get_dep_id(cel_color=cur_color, cell_str=f"{row}, {col}")
 
             # разделение ячейки названия пары на части
             lesson_parts = self.get_lesson_parts(lesson_cell, is_magic)
@@ -429,8 +429,8 @@ class VegaRaspParser:
                 exam_date += "." + str(self.end_year)
 
             worktype = utils.get_worktype(exam_type)
-            cur_color = ws.cell(row, col + 1).fill.start_color.index
-            department_id = self.get_dep_id(cel_color=cur_color)
+            cur_color = utils.get_cell_color(ws, row, col)
+            department_id = self.get_dep_id(cel_color=cur_color, cell_str=f"{row}, {col}")
             disc_id = self.get_disc_id(lesson_name, department_id)
 
             # если перепутали название дисциплины, добавим такую
@@ -778,7 +778,7 @@ class VegaRaspParser:
         disc_id = self.db.get_id(table_name="sc_disc", params=params)
         return disc_id
 
-    def get_dep_id(self, cel_color: int) -> int:
+    def get_dep_id(self, cel_color: int, cell_str: str) -> int:
         """Получить по цвету ячейки id кафедры"""
         department_name = "другая"
         excel_color = Color(rgb=cel_color)
@@ -794,7 +794,7 @@ class VegaRaspParser:
         elif excel_color in CellColors.OTHERS_DEP_COLORS:
             department_name = "другая"
         else:
-            print(f"Новый цвет кафедры: {cel_color}")
+            print(f"Новый цвет кафедры (ячейка {cell_str}): {cel_color}")
             department_name = "другая"
 
         dep_params = {"title": department_name}
