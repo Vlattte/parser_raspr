@@ -305,9 +305,8 @@ ALTER SEQUENCE sc_rasp18_info_id_seq OWNED BY sc_rasp18_info.id;
 
 CREATE TABLE sc_rasp18_move (
     id integer NOT NULL,
+    rasp18_src_id integer,
     rasp18_dest_id integer,
-    src_day_id integer,
-    src_pair integer,
     reason text,
     comment text
 );

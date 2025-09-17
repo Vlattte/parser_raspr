@@ -162,7 +162,7 @@ class VegaRaspParser:
         self.version_col = 2
         self.group_row = 4
 
-    def change_to_dafault_params(self):
+    def change_to_default_params(self):
         """Возвращает параметры к дефолтным"""
         # позиция ячейки с версией
         self.version_col = 1
@@ -178,7 +178,7 @@ class VegaRaspParser:
         # заполняем типы пар
         self.db.fill_worktypes()
 
-        # если выбрали файл расписания семетра
+        # если выбрали файл расписания семестра
         if self.is_default:
             self.parse_semestr()
         # если выбрали файл расписания сессии
@@ -198,7 +198,7 @@ class VegaRaspParser:
         """Парсинг расписания семестровых пар"""
         self.log_cmd_message(f"<--PARSING SEMESTR: {self.default_filename}-->")
 
-        self.change_to_dafault_params()
+        self.change_to_default_params()
         self.parse_excel_file(self.default_filename, default_rasp=True)
 
         self.log_cmd_message(f"<--RASP PARSED: {self.default_filename}-->")
@@ -533,8 +533,8 @@ class VegaRaspParser:
         start_week = 1
 
         if is_magic:
-            last_week = start_week + WEEKS
             start_week = self.db.get_week(self.magic_first_stud_date, self.semcode)
+            last_week = start_week + WEEKS
 
         all_weeks = list(range(start_week, last_week))
 
