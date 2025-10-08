@@ -37,13 +37,13 @@ def get_group_parts(group_cell: str) -> GroupParts:
     group_parts = GroupParts()
 
     # если есть подстрока с курсов, вытаскиваем
-    kurs = re.search(r"\d курс", group_cell)
+    kurs = re.search(r"\d курс", str(group_cell))
     if kurs is not None:
         group_parts.course = kurs.group()
         group_name = group_name.removeprefix(kurs)
 
     # если есть подстрока с кафедрой, пишем как подгруппу
-    dep = re.search(r"\((\w)*\)", group_cell)
+    dep = re.search(r"\((\w)*\)", str(group_cell))
     if dep is not None:
         dep_name = dep.group().upper()
         if "ВЕГА" in dep_name:

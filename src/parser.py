@@ -238,6 +238,8 @@ class VegaRaspParser:
             # если заголовок столбца пустой, пропускаем
             if not group_cell:
                 continue
+            if "КМБО" not in str(group_cell) and "КММО" not in str(group_cell):
+                continue
             if default_rasp:
                 self.parse_default_col(col, ws, max_row, group_cell, merged_cells)
             else:
