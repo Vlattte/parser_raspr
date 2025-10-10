@@ -1,29 +1,35 @@
 
 delete from 
-  sc_rasp18_rooms;
+  public.sc_rasp18_rooms;
 delete from 
-  sc_rasp18;
+  public.sc_rasp18;
 delete from 
-  sc_rasp18_preps;
+  public.sc_rasp18_preps;
 delete from 
-  sc_rasp18_groups;
+  public.sc_rasp18_groups;
 delete from 
-  sc_rasp18_days;
+  public.sc_rasp18_days;
 
 delete FROM
-  sc_department;
+  public.sc_department;
 delete FROM
-  sc_disc;
+  public.sc_disc;
 delete FROM
-    sc_group;
+    public.sc_group;
 delete FROM
-    sc_prep;
+    public.sc_prep;
 
 delete FROM
-    sc_rasp7;
+    public.sc_rasp7;
 delete FROM
-    sc_rasp7_preps;    
+    public.sc_rasp7_preps;    
 delete FROM
-    sc_rasp7_rooms;
+    public.sc_rasp7_rooms;
 delete FROM
-    sc_rasp7_groups;
+    public.sc_rasp7_groups;
+
+delete FROM
+    parser_meta.status;
+
+delete FROM
+    parser_meta.requests;

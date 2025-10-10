@@ -104,11 +104,17 @@ def get_lesson_type(lesson: str) -> str:
     return lesson_type
 
 
-def get_stud_years(title: str):
+def get_stud_years():
     """Получить год начала и конца учебного года"""
     today = datetime.now()
     start_year = today.year
     end_year = start_year + 1
+    return start_year, end_year
+
+
+def get_stud_years_from_title(title: str):
+    """Получить год начала и конца учебного года по заголовку файла"""
+    start_year, end_year = get_stud_years()
 
     year_pattern = r"20\d\d/\d\d"
     stud_years = re.search(year_pattern, title)
@@ -216,6 +222,7 @@ def get_theme_color(theme_index, tint=0):
     if theme_index < len(theme_colors):
         return theme_colors[theme_index]
     return 'FFFFFFFF'  # Белый по умолчанию
+
 
 def time_in_90_minutes(time_start):
     """Получить время через 1.5 часа"""
@@ -410,3 +417,24 @@ def is_magic_group(group_name: str):
     if "КММО" in group_name:
         return True
     return False
+
+
+def get_current_semcode() -> int:
+    """Получает текущий семкод на основе текущей даты"""
+    today = datetime.now()
+    year = today.year
+    month = today.month
+
+    result = -1
+
+    if 2 <= month <= 6:
+        result = f"{str(year - 1)[-2:]}{str(year)[-2:]}01"
+    elif month >= 9 or month == 1:
+        if month == 1:
+            result = f"{str(year - 1)[-2:]}{str(year)[-2:]}00"
+
+        result = f"{str(year)[-2:]}{str(year + 1)[-2:]}00"
+    else:
+        result = f"{str(year)[-2:]}{str(year + 1)[-2:]}00"
+
+    return int(result)

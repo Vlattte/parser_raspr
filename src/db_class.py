@@ -11,13 +11,14 @@ import re
 from psycopg2 import connect
 from psycopg2 import Error
 from dotenv import load_dotenv
-from progress.bar import PixelBar
+
+from src.structs import ReqStatus
 
 
 class Database:
     """Класс работы в БД"""
 
-    def __init__(self, pre_clear: bool = None) -> None:
+    def __init__(self) -> None:
         """Инициализирует БД"""
         super().__init__()
 
@@ -27,19 +28,11 @@ class Database:
         self.db_user = getenv("DB_USER")
         self.db_password = getenv("DB_PASSWORD")
         self.db_port = getenv("DB_PORT")
-        self.is_pre_clear = pre_clear
 
         self.requests_file_name = "sql_scripts/sql_dump.sql"
 
         self.conn = None
         self.cur = None
-
-        # очищать ли базу перед работой
-        if self.is_pre_clear:
-            self.set_conn()
-            self.__clear_tables()
-            print("<--TABLES CLEARED-->")
-            self.close_conn()
 
     def set_conn(self):
         """Установка соединения"""
@@ -74,7 +67,7 @@ class Database:
 
             if is_return:
                 return_data = self.cur.fetchall()
-                if 0 < len(return_data) < 2:
+                if len(return_data) == 1 and len(return_data[0]) == 1:
                     return_data = return_data[0][0]
                 elif len(return_data) < 1:
                     return_data = None
@@ -85,17 +78,18 @@ class Database:
             if self.conn:
                 self.conn.commit()
 
-    def __clear_tables(self):
+    def clear_tables(self):
         """ОЧИЩАЕТ ВСЕ ТАБЛИЦЫ"""
+        print("<--TABLES CLEARED-->")
         with open(
-            "sql_scripts/clear_script.sql", "r", encoding="utf-8"
+                "sql_scripts/clear_script.sql", "r", encoding="utf-8"
         ) as clear_script:
             query = clear_script.read()
             query = query.replace("\n", "")
             self.send_request(query)
 
     def set_prep(
-        self, fio: str, chair: str = None, degree: str = None, photo: str = None
+            self, fio: str, chair: str = None, degree: str = None, photo: str = None
     ):
         """Заполнение таблицы преподавателей"""
         if fio == "null" or fio is None:
@@ -171,14 +165,14 @@ class Database:
         return disc_id
 
     def set_rasp7(
-        self,
-        semcode: int,
-        version: int,
-        disc_id: int,
-        weekday: int,
-        pair: int,
-        weeksarray: list[int],
-        weekstext: str,
+            self,
+            semcode: int,
+            version: int,
+            disc_id: int,
+            weekday: int,
+            pair: int,
+            weeksarray: list[str],
+            weekstext: str,
     ) -> int:
         """Заполнение таблицы sc_rasp7"""
         table_name = "sc_rasp7"
@@ -191,7 +185,7 @@ class Database:
         return rasp7_id
 
     def set_rasp7_groups(self, rasp7_id: int, group_id: int, sub_group: int):
-        """добавить запись в семидневное расписание"""
+        """Добавить запись в семидневное расписание"""
         table_name = "sc_rasp7_groups"
 
         params = {"rasp7_id": rasp7_id, "group_id": group_id, "subgroup": sub_group}
@@ -207,7 +201,7 @@ class Database:
         return rasp7_groups_id
 
     def set_rasp7_preps(self, rasp7_id: int, prep_id: int):
-        """преподователи для семидневного расписания"""
+        """Преподователи для семидневного расписания"""
         table_name = "sc_rasp7_preps"
         if prep_id is None or prep_id == "null":
             return None
@@ -219,7 +213,7 @@ class Database:
         return rasp7_preps_id
 
     def set_rasp7_rooms(self, rasp7_id: int, room: str):
-        """аудитории для семидневного расписания"""
+        """Аудитории для семидневного расписания"""
         table_name = "sc_rasp7_rooms"
 
         query = f" \
@@ -229,10 +223,12 @@ class Database:
         return rasp7_rooms_id
 
     def clear_rasp_data_between_weeks(
-        self, semcode: int, is_semestr: bool, start_date: datetime, end_date: datetime
+            self, semcode: int, is_semestr: bool, start_date: datetime, end_date: datetime
     ):
-        """Очистка промежутка недель от данных, чтобы в них залить новую версию
-        Затрагивает таблицы, которые зависят от rasp18_id и саму sc_rasp18"""
+        """
+        Очистка промежутка недель от данных, чтобы в них залить новую версию
+        Затрагивает таблицы, которые зависят от rasp18_id и саму sc_rasp18
+        """
         # включает в себя пр, лк, лб
         worktype_clause = "< 3"
         if not is_semestr:
@@ -282,7 +278,7 @@ class Database:
         )
         if duration.days < 0:
             raise ValueError(
-                "Начальная дата позже конечной, измените файл конфигурации"
+                "Начальная дата позже конечной, ошибка входных данных"
             )
 
         # fill_days_bar = PixelBar("Заполнение rasp18_days", max=duration.days)
@@ -290,6 +286,7 @@ class Database:
         # fill_days_bar.start()
 
         date = datetime.strptime(start_date, "%Y-%m-%d").date()
+
         cur_week = 1
         while str(date) <= end_date:
             cur_weekday = (date.weekday() + 1) % 7
@@ -301,6 +298,18 @@ class Database:
                 cur_week += 1
         #     fill_days_bar.next()
         # fill_days_bar.finish()
+
+    def is_days_period_filled(self, semcode: int, start_date: str, end_date: str) -> bool:
+        """Проверяем, заполнены ли уже даты на этот период или нет"""
+        table_name = "sc_rasp18_days"
+        query = f"\
+        SELECT COUNT(id) FROM {table_name} \
+        WHERE semcode = {semcode} \
+        AND date('{start_date}') <= day \
+        AND date('{end_date}') >= day"
+
+        written_days_n = self.send_request(query, is_return=True)
+        return True if written_days_n > 0 else False
 
     def set_rasp18_days(self, semcode: int, day: str, weekday: int, week: int):
         """Таблица соответствия дня в неделе и даты"""
@@ -317,21 +326,21 @@ class Database:
                 VALUES ({semcode}, date('{day}'), {weekday}, {week})  \
                 ON CONFLICT DO NOTHING RETURNING id;"
         rasp18_days_id = self.send_request(query, True)
-        
+
         return rasp18_days_id
 
     def set_rasp18(
-        self,
-        semcode: int,
-        day_id: int,
-        pair: int,
-        kind: int,
-        worktype: int,
-        disc_id: int,
-        timestart: str,
-        timeend: str,
-        prep_id: int,
-        room: str,
+            self,
+            semcode: int,
+            day_id: int,
+            pair: int,
+            kind: int,
+            worktype: int,
+            disc_id: int,
+            timestart: str,
+            timeend: str,
+            prep_id: int,
+            room: str,
     ):
         """
         ячейка в таблице расписания
@@ -455,7 +464,8 @@ class Database:
         return_id = self.send_request(query, is_return=True)
         return return_id
 
-    def get_id_request(self, table_name: str, params: dict) -> str:
+    @staticmethod
+    def get_id_request(table_name: str, params: dict) -> str:
         """Возвращает запрос для получения id"""
         where_statements = ""
         for key, val in params.items():
@@ -512,7 +522,7 @@ class Database:
 
         # проверка на наличие такой таблицы
         create_query = f"""CREATE TABLE IF NOT EXISTS public.{
-            table_name} (id SERIAL PRIMARY KEY, title text);"""
+        table_name} (id SERIAL PRIMARY KEY, title text);"""
         self.send_request(create_query)
 
         query = ""
@@ -526,10 +536,71 @@ class Database:
         if query != "":
             self.send_request(query)
 
-    def get_week(self, day: datetime, semcode: int) -> int:
+    def get_week(self, day: str, semcode: int) -> int:
         """Получить номер недели"""
         query = f"""
         SELECT week FROM sc_rasp18_days WHERE day = date('{day}') AND semcode = {semcode};
         """
         week = self.send_request(query=query, is_return=True)
         return week
+
+    def get_dates(self, semcode: int):
+        """Получить даты начала и конца семестра"""
+        query = f"""
+        SELECT MIN(day), MAX(day) FROM sc_rasp18_days WHERE semcode = {semcode};
+        """
+
+        start_date, end_date = self.send_request(query=query, is_return=True)
+        return start_date, end_date
+
+    ########################
+    # META TABLES REQUESTS #
+    ########################
+
+    def save_new_request(self, filename: str) -> int:
+        """Загрузка новой заявки в БД"""
+        table_name = "parser_meta.requests"
+        query = f"""
+            INSERT INTO {table_name} (rasp_filename, report_dttm) 
+            VALUES('{filename}', date('{datetime.now()}'))
+            RETURNING req_id;
+        """
+        req_id = self.send_request(query=query, is_return=True)
+        return req_id
+
+    def update_req_status(self, req_id: int, new_status: ReqStatus, cur_percent: float = 0) -> None:
+        """Обновить статус заявки"""
+        table_name = "parser_meta.status"
+
+        query = (f"\
+        INSERT INTO {table_name} (req_id, status, status_percent) \
+        VALUES ({req_id}, '{new_status}', {cur_percent}) \
+            ON CONFLICT(req_id, status) DO UPDATE SET \
+            status = '{new_status}', \
+            status_percent = {cur_percent};")
+        self.send_request(query)
+
+    def get_meta_statuses(self):
+        """Получить текущее состояние заявок"""
+        table_name = "parser_meta.status"
+        query = f"\
+        SELECT * FROM {table_name};"
+
+        statuses = self.send_request(query, is_return=True)
+        if len(statuses) == 0:
+            return "No requests yet"
+        keys = ("status", "parsing_percent")
+
+        # {req_id: {req_data}, ...}
+        statuses = {stat[1]: dict(zip(keys, stat[2:])) for stat in statuses}
+        print(statuses)
+
+        table_name = "parser_meta.requests"
+        query = f"SELECT * FROM {table_name};"
+        req_data = self.send_request(query, is_return=True)
+        print(req_data)
+
+        stat_list = {req_id: statuses[req_id].update({"file_name": file_nm, "report_dttm": report_dttm})
+                     for req_id, file_nm, report_dttm in req_data}
+        print(stat_list)
+        return stat_list
