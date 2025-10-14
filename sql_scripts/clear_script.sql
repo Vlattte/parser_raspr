@@ -28,8 +28,8 @@ delete FROM
 delete FROM
     public.sc_rasp7_groups;
 
-delete FROM
-    parser_meta.status;
-
-delete FROM
-    parser_meta.requests;
+--delete FROM
+--    parser_meta.status;
+--
+--delete FROM
+--    parser_meta.requests;

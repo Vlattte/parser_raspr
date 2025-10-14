@@ -438,3 +438,8 @@ def get_current_semcode() -> int:
         result = f"{str(year)[-2:]}{str(year + 1)[-2:]}00"
 
     return int(result)
+
+def filepath_to_filename(filename: str):
+    """Преобразовать путь до файла в название"""
+    parts = filename.split("\\")
+    return parts[-1]

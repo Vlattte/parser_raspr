@@ -13,6 +13,7 @@ from psycopg2 import Error
 from dotenv import load_dotenv
 
 from src.structs import ReqStatus
+from src.utils import filepath_to_filename
 
 
 class Database:
@@ -28,8 +29,6 @@ class Database:
         self.db_user = getenv("DB_USER")
         self.db_password = getenv("DB_PASSWORD")
         self.db_port = getenv("DB_PORT")
-
-        self.requests_file_name = "sql_scripts/sql_dump.sql"
 
         self.conn = None
         self.cur = None
@@ -52,6 +51,7 @@ class Database:
             print("Set connection error occured", error)
             self.conn = None
             self.cur = None
+            raise error
 
     def close_conn(self):
         """Закрыть соединение с базой"""
@@ -72,8 +72,10 @@ class Database:
                 elif len(return_data) < 1:
                     return_data = None
                 return return_data
+            return None
         except Error as error:
             print(f"PostgreSQL error occured {error} after request:\n{query}")
+            exit(1)
         finally:
             if self.conn:
                 self.conn.commit()
@@ -82,14 +84,14 @@ class Database:
         """ОЧИЩАЕТ ВСЕ ТАБЛИЦЫ"""
         print("<--TABLES CLEARED-->")
         with open(
-                "sql_scripts/clear_script.sql", "r", encoding="utf-8"
+            "sql_scripts/clear_script.sql", "r", encoding="utf-8"
         ) as clear_script:
             query = clear_script.read()
             query = query.replace("\n", "")
             self.send_request(query)
 
     def set_prep(
-            self, fio: str, chair: str = None, degree: str = None, photo: str = None
+        self, fio: str, chair: str = None, degree: str = None, photo: str = None
     ):
         """Заполнение таблицы преподавателей"""
         if fio == "null" or fio is None:
@@ -165,14 +167,14 @@ class Database:
         return disc_id
 
     def set_rasp7(
-            self,
-            semcode: int,
-            version: int,
-            disc_id: int,
-            weekday: int,
-            pair: int,
-            weeksarray: list[str],
-            weekstext: str,
+        self,
+        semcode: int,
+        version: int,
+        disc_id: int,
+        weekday: int,
+        pair: int,
+        weeksarray: list[str],
+        weekstext: str,
     ) -> int:
         """Заполнение таблицы sc_rasp7"""
         table_name = "sc_rasp7"
@@ -223,7 +225,7 @@ class Database:
         return rasp7_rooms_id
 
     def clear_rasp_data_between_weeks(
-            self, semcode: int, is_semestr: bool, start_date: datetime, end_date: datetime
+        self, semcode: int, is_semestr: bool, start_date: datetime, end_date: datetime
     ):
         """
         Очистка промежутка недель от данных, чтобы в них залить новую версию
@@ -277,9 +279,7 @@ class Database:
             start_date, "%Y-%m-%d"
         )
         if duration.days < 0:
-            raise ValueError(
-                "Начальная дата позже конечной, ошибка входных данных"
-            )
+            raise ValueError("Начальная дата позже конечной, ошибка входных данных")
 
         # fill_days_bar = PixelBar("Заполнение rasp18_days", max=duration.days)
         # fill_days_bar.check_tty = False
@@ -299,7 +299,15 @@ class Database:
         #     fill_days_bar.next()
         # fill_days_bar.finish()
 
-    def is_days_period_filled(self, semcode: int, start_date: str, end_date: str) -> bool:
+        # логгируем, что заполнили дни
+        days_filles_msg = (
+            f"<--Таблица sc_rasp18_days заполнена c {start_date} " + f"по {end_date}"
+        )
+        print(days_filles_msg)
+
+    def is_days_period_filled(
+        self, semcode: int, start_date: str, end_date: str
+    ) -> bool:
         """Проверяем, заполнены ли уже даты на этот период или нет"""
         table_name = "sc_rasp18_days"
         query = f"\
@@ -330,21 +338,22 @@ class Database:
         return rasp18_days_id
 
     def set_rasp18(
-            self,
-            semcode: int,
-            day_id: int,
-            pair: int,
-            kind: int,
-            worktype: int,
-            disc_id: int,
-            timestart: str,
-            timeend: str,
-            prep_id: int,
-            room: str,
+        self,
+        semcode: int,
+        day_id: int,
+        pair: int,
+        kind: int,
+        worktype: int,
+        disc_id: int,
+        timestart: str,
+        timeend: str,
+        prep_id: int,
+        room: str,
+        time_ver: int,
     ):
         """
         ячейка в таблице расписания
-        kind integer  -- 0обычное,1перенос,2повтор
+        kind integer -- 0обычное,1перенос,2повтор
         worktype integer -– 0пр,1лк,2лб,
             -- 11экз,12зач,13зач-д,
             -- 14кр,15кп
@@ -355,7 +364,8 @@ class Database:
 
         if day_id is None:
             raise ValueError(
-                "Ошибка в датах! Невозможно продолжать парсинг, устраните ошибки с параметрами START_DATE и END_DATE"
+                "Ошибка в датах! Невозможно продолжать парсинг,\
+                    устраните ошибки с параметрами START_DATE и END_DATE"
             )
 
         # только часы и минуты, секунды образаем
@@ -371,19 +381,19 @@ class Database:
         WHERE semcode = {semcode} AND day_id = {day_id} AND pair = {pair}
             AND kind = {kind} AND worktype = {worktype} AND disc_id = {disc_id}
             AND timestart = '{timestart_hm}' AND timeend = '{timeend_hm}'
-            AND p.prep_id = {prep_id} AND r.room = '{room}';
+            AND p.prep_id = {prep_id} AND r.room = '{room}' AND r18.time_ver = {time_ver};
         """
             rasp18_id = self.send_request(exists_query, is_return=True)
             if rasp18_id is not None:
                 return rasp18_id
 
-        query = f"""
-                INSERT INTO {table_name} 
-                (semcode, day_id, pair, kind, worktype, disc_id, timestart, timeend)
-                VALUES 
-                ({semcode}, {day_id}, {pair}, {kind}, {worktype}, 
-                {disc_id}, '{timestart_hm}', '{timeend_hm}')
-                ON CONFLICT DO NOTHING RETURNING id;"""
+        query = f"\
+                INSERT INTO {table_name} \
+                (semcode, day_id, pair, kind, worktype, disc_id, timestart, timeend, time_ver) \
+                VALUES \
+                ({semcode}, {day_id}, {pair}, {kind}, {worktype}, \
+                {disc_id}, '{timestart_hm}', '{timeend_hm}', {time_ver}) \
+                ON CONFLICT DO NOTHING RETURNING id;"
         rasp18_id = self.send_request(query, True)
         return rasp18_id
 
@@ -549,58 +559,143 @@ class Database:
         query = f"""
         SELECT MIN(day), MAX(day) FROM sc_rasp18_days WHERE semcode = {semcode};
         """
+        res_list = self.send_request(query=query, is_return=True)
+        start_date, end_date = map(str, res_list[0])
 
-        start_date, end_date = self.send_request(query=query, is_return=True)
         return start_date, end_date
 
     ########################
     # META TABLES REQUESTS #
     ########################
 
-    def save_new_request(self, filename: str) -> int:
+    def save_new_request(
+        self, filename: str, start_date: str, end_date: str, magic_start: str = None
+    ) -> tuple[int, int]:
         """Загрузка новой заявки в БД"""
-        table_name = "parser_meta.requests"
-        query = f"""
-            INSERT INTO {table_name} (rasp_filename, report_dttm) 
-            VALUES('{filename}', date('{datetime.now()}'))
-            RETURNING req_id;
-        """
-        req_id = self.send_request(query=query, is_return=True)
-        return req_id
+        self.create_meta_tables()
 
-    def update_req_status(self, req_id: int, new_status: ReqStatus, cur_percent: float = 0) -> None:
-        """Обновить статус заявки"""
+        table_name = "parser_meta.requests"
+        req_time = datetime.now()
+
+        if magic_start is None:
+            magic_start = start_date
+
+        query = f"\
+            INSERT INTO {table_name} \
+            (rasp_filename, start_date, end_date, magic_start, report_dttm) \
+            VALUES('{filename}', date('{start_date}'), \
+            date('{end_date}'), date('{magic_start}'), '{req_time.ctime()}') \
+            RETURNING req_id;"
+        req_id = self.send_request(query=query, is_return=True)
+        return req_id, req_time.timestamp()
+
+    def update_req(
+        self, req_id: int, new_status: ReqStatus, cur_percent: float
+    ) -> None:
+        """Обновить все данные по заявке"""
         table_name = "parser_meta.status"
 
-        query = (f"\
+        query = f"\
         INSERT INTO {table_name} (req_id, status, status_percent) \
         VALUES ({req_id}, '{new_status}', {cur_percent}) \
-            ON CONFLICT(req_id, status) DO UPDATE SET \
+            ON CONFLICT(req_id) DO UPDATE SET \
             status = '{new_status}', \
-            status_percent = {cur_percent};")
+            status_percent = {cur_percent};"
         self.send_request(query)
 
-    def get_meta_statuses(self):
-        """Получить текущее состояние заявок"""
+    def update_req_status(self, req_id: int, new_status: ReqStatus) -> None:
+        """Обновить только статус заявки"""
         table_name = "parser_meta.status"
+
         query = f"\
-        SELECT * FROM {table_name};"
+        INSERT INTO {table_name} (req_id, status) \
+        VALUES ({req_id}, '{new_status}') \
+            ON CONFLICT(req_id) DO UPDATE SET \
+            status = '{new_status}';"
+        self.send_request(query)
+
+    def get_meta_statuses(self) -> dict:
+        """Получить текущее состояние ВСЕХ заявок"""
+        table_name = "parser_meta.status"
+        query = f"SELECT * FROM {table_name};"
 
         statuses = self.send_request(query, is_return=True)
-        if len(statuses) == 0:
-            return "No requests yet"
+        if not statuses:
+            return {"WARNING": "No requests yet"}
         keys = ("status", "parsing_percent")
 
         # {req_id: {req_data}, ...}
         statuses = {stat[1]: dict(zip(keys, stat[2:])) for stat in statuses}
-        print(statuses)
 
         table_name = "parser_meta.requests"
         query = f"SELECT * FROM {table_name};"
         req_data = self.send_request(query, is_return=True)
-        print(req_data)
 
-        stat_list = {req_id: statuses[req_id].update({"file_name": file_nm, "report_dttm": report_dttm})
-                     for req_id, file_nm, report_dttm in req_data}
-        print(stat_list)
+        if not req_data:
+            return {"WARNING": "no data in database"}
+
+        stat_list = {
+            (req_id): {
+                **statuses[req_id],
+                **{
+                    "file_name": filepath_to_filename(file_nm),
+                    "report_dttm": str(report_dttm),
+                },
+            }
+            for req_id, file_nm, _, _, _, report_dttm in req_data
+        }
+
         return stat_list
+
+    def get_reqs_before(self, req_id: int) -> list | None:
+        """Получить заявки до выбранной (сравниваются по времени регистрации заявки)"""
+        table_reqs = "parser_meta.requests"
+        query_cur_req = f"SELECT report_dttm FROM {table_reqs} WHERE req_id = {req_id};"
+        cur_req_reg_time = self.send_request(query_cur_req, is_return=True)
+        if not cur_req_reg_time:
+            return None
+
+        table_stats = "parser_meta.status"
+        query_reqs_before = f"\
+            SELECT reqs.req_id, reqs.rasp_filename, reqs.report_dttm, st.status \
+            FROM {table_reqs} reqs \
+            INNER JOIN {table_stats} st \
+            ON reqs.req_id = st.req_id \
+            WHERE reqs.report_dttm < '{cur_req_reg_time}' \
+            AND (st.status = '{ReqStatus.PARSING}' OR st.status = '{ReqStatus.WAITING}');"
+        reqs_before = self.send_request(query_reqs_before, is_return=True)
+
+        return reqs_before
+
+    def create_meta_tables(self):
+        """Создать мета таблицы"""
+        if self.check_meta_exists():
+            return
+
+        with open("sql_scripts/meta_tables.sql", "r", encoding="utf-8") as create_meta:
+            query = create_meta.read()
+            self.send_request(query)
+
+    def check_meta_exists(self):
+        """Проверить наличие мета таблиц"""
+        check_query = "SELECT EXISTS (\
+                       SELECT FROM information_schema.tables \
+                       WHERE  table_schema = 'parser_meta' \
+                       AND    table_name   = 'status')"
+        tables_exists = self.send_request(check_query, is_return=True)
+        return tables_exists
+
+    def get_req_data(self, req_id: int):
+        """
+        Получить данные по заявке:
+        - rasp_filename - имя файла расписания
+        - start_date - первая дата, загруженная в заявке
+        - end_date - последняя дата, загруженная в заявке
+        - magic_start - первый день, записанный для магистров
+        """
+        table_name = "parser_meta.requests"
+        req_query = f"SELECT rasp_filename, start_date, end_date, magic_start FROM {table_name} \
+                    WHERE req_id = {req_id};"
+        data = self.send_request(req_query, is_return=True)
+        print(data)
+        return data[0]
