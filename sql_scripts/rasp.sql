@@ -138,7 +138,8 @@ CREATE TABLE sc_rasp18 (
     worktype integer,
     disc_id integer,
     timestart text,
-    timeend text
+    timeend text,
+    time_ver bigint    -- version in time since EPOCH
 );
 
 

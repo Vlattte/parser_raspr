@@ -60,12 +60,14 @@ class ListData(Enum):
     PARITY = ["Iн", "IIн"]
     WEEK_STRS = ["ВС", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"]
 
+
 @dataclass
 class GroupParts:
     """Части ячейки названия группы"""
     course: str = None
     name: str = None
     sub_group: int = -1
+
 
 @dataclass
 class LessonParts:
@@ -94,7 +96,32 @@ class WeeksParts:
 @dataclass
 class TimeFromLessonCell:
     """Время и недели из сложных ячеек пар (например, НИР Iн 9:00-13:00)"""
-    timestart: str = None   # начало пары
-    timeend: str = None     # конец пары
+    timestart: str = None  # начало пары
+    timeend: str = None  # конец пары
 
-    weeks: str = None       # недели, по которым пара в это время
+    weeks: str = None  # недели, по которым пара в это время
+
+
+class RunType(str, Enum):
+    """Способ запуска программы"""
+
+    WEB_API = "WEB_API"     # запуск как сервис
+    CMD = "CMD"             # запуск с использованием параметров env
+
+
+class RaspType(str, Enum):
+    """Тип расписания"""
+
+    SEMESTR = "sem"  # расписание на семестр
+    EXAM = "exam"  # расписание экзаменов
+
+
+class ReqStatus(str, Enum):
+    """Статусы работы парсера"""
+
+    CREATED = "CREATED"
+    WAITING = "WAITING"
+    PARSING = "PARSING"
+    FINISHED = "FINISHED"
+    ERROR = "ERROR"
+
