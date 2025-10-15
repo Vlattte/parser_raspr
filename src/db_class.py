@@ -616,6 +616,9 @@ class Database:
 
     def get_meta_statuses(self) -> dict:
         """Получить текущее состояние ВСЕХ заявок"""
+        if not self.check_meta_exists():
+            return None
+
         table_name = "parser_meta.status"
         query = f"SELECT * FROM {table_name};"
 
@@ -640,10 +643,14 @@ class Database:
                 **{
                     "file_name": filepath_to_filename(file_nm),
                     "report_dttm": str(report_dttm),
+                    "is_latest": False,
                 },
             }
             for req_id, file_nm, _, _, _, report_dttm in req_data
         }
+
+        latest_req = max(stat_list.items(), key=lambda vals: vals[1]["report_dttm"])
+        stat_list[latest_req[0]]["is_latest"] = True
 
         return stat_list
 
@@ -693,9 +700,15 @@ class Database:
         - end_date - последняя дата, загруженная в заявке
         - magic_start - первый день, записанный для магистров
         """
+        if not self.check_meta_exists():
+            return {"Warning": "No requests yet"}
+
         table_name = "parser_meta.requests"
         req_query = f"SELECT rasp_filename, start_date, end_date, magic_start FROM {table_name} \
                     WHERE req_id = {req_id};"
         data = self.send_request(req_query, is_return=True)
-        print(data)
+
+        if data is None:
+            return {"ERROR": "Bad request id"}
+
         return data[0]

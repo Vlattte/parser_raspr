@@ -254,7 +254,12 @@ async def reparse_by_req_id(
     """Запустить повторный парсинг по номер заявки"""
     db = Database()
     db.set_conn()
-    file_path, start_date, end_date, magic_start = db.get_req_data(req_id)
+    
+    req_data = db.get_req_data(req_id)
+    if isinstance(req_data, dict):
+        return req_data
+    
+    file_path, start_date, end_date, magic_start = req_data
 
     if not path.isfile(file_path):
         return JSONResponse(
@@ -278,16 +283,24 @@ async def reparse_by_req_id(
 async def get_req_statuses() -> JSONResponse:
     """Получить статусы заявок на парсинг в формате:
     {
-        req_id: int,
-        status: ReqStatus,
-        parsing_percent: int,
-        is_latest: bool
+        req_id: {
+            status: ReqStatus,
+            parsing_percent: int,
+            file_name: str,
+            report_dttm: date,
+            is_latest: bool
+        }
     }
     """
     db = Database()
     db.set_conn()
 
     statuses = db.get_meta_statuses()
+    if statuses is None:
+        return JSONResponse(
+            content={"WARNING": "No requests yet"},
+            status_code=400,
+        )
 
     db.close_conn()
     return JSONResponse(status_code=200, content=statuses)
