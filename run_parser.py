@@ -28,9 +28,13 @@ from src.structs import RaspType
 from src.structs import ReqStatus
 
 load_dotenv()
-
-app = FastAPI(title="API парсера расписания")
 root_path = getenv("DOMEN_ROOT_PATH") if not None else "rasp_parse"
+
+app = FastAPI(
+    title="API парсера расписания",
+    root_path=root_path,
+    servers=[{"url": f"/{root_path}"}],
+)
 
 
 def is_params_good(cmd_params: CmdParams) -> bool:
@@ -106,7 +110,7 @@ def parse_cmd_argument() -> CmdParams | None:
 
 
 @app.post(
-    f"/{root_path}/sem",
+    "/sem",
     summary="Парсинг расписания семестра",
     description=(
         "Парсинг расписания в БД и сохранение файла с ним в папке rasp_files. "
@@ -147,7 +151,7 @@ async def parse_sem(
 
 
 @app.post(
-    f"/{root_path}/exam",
+    "/exam",
     summary="Парсинг расписания сессии",
     description=(
         "Парсинг расписания сессии в БД и сохранение файла с ним в папке rasp_files. "
@@ -247,18 +251,18 @@ async def download_file(file: UploadFile) -> str | None:
     return file_path
 
 
-@app.get(f"/{root_path}/")
+@app.get("/{req_id}")
 async def reparse_by_req_id(
     req_id: int, background_tasks: BackgroundTasks
 ) -> JSONResponse:
     """Запустить повторный парсинг по номер заявки"""
     db = Database()
     db.set_conn()
-    
+
     req_data = db.get_req_data(req_id)
     if isinstance(req_data, dict):
-        return req_data
-    
+        return JSONResponse(content=req_data, status_code=400)
+
     file_path, start_date, end_date, magic_start = req_data
 
     if not path.isfile(file_path):
@@ -279,7 +283,7 @@ async def reparse_by_req_id(
     return status
 
 
-@app.get(f"/{root_path}")
+@app.get("/")
 async def get_req_statuses() -> JSONResponse:
     """Получить статусы заявок на парсинг в формате:
     {
@@ -327,7 +331,7 @@ if __name__ == "__main__":
     #####################
     # ЗАПУСК ВЕБ ВЕРСИИ #
     #####################
-    uvicorn.run("run_parser:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("run_parser:app", host="0.0.0.0", port=8000, reload=True)
 
     #####################
     # ЗАПУСК ИЗ КОНСОЛИ #
