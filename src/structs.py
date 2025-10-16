@@ -37,8 +37,9 @@ class CellColors(list, Enum):
     # КАФЕДРЫ
     OTHERS_DEP_COLORS = [
         Color(rgb="FFD1F3FF"),
-        Color(rgb="00000000"),
-        Color(rgb="FF000000")
+        Color(rgb="FFB2ECFF"),
+        Color(rgb="FF000000"),
+        Color(rgb="00000000")
     ]  # ведут другие кафедры
     VM_DEP_COLORS = [Color(rgb="FFFFF56D"), Color(rgb="FFFFE15A")]  # ведет ВМ
     VEGA_DEP_COLORS = [

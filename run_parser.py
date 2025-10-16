@@ -36,8 +36,9 @@ app.add_middleware(
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]    
+    allow_headers=["*"]
 )
+
 
 def is_params_good(cmd_params: CmdParams) -> bool:
     """Проверка на корректность переданных аргументов"""
@@ -115,25 +116,25 @@ def parse_cmd_argument() -> CmdParams | None:
     "/sem",
     summary="Парсинг расписания семестра",
     description=(
-        "Парсинг расписания в БД и сохранение файла с ним в папке rasp_files. "
-        + "Принимает файл в формате xlsx\n"
-        + "## Обязательные параметры:\n"
-        + " - **start_date** - день первого семестра для БАКАЛАВРИАТА\n"
-        + " - **end_date** - день последнего учебного дня\n"
-        + " - **file** - файл семестра, который нужно распарсить\n"
-        + "\n_Даты писать в строковом виде в формате YYYY-MM-DD (год-месяц-день)_\n"
-        + "\n_Все даты включительно [start_date, end_date]_\n"
-        + "\n## Не обязательные параметры:\n"
-        + " - **magic_start_date** - первый день обучения магистров "
-        + "(если не задан расписание магистров начнется как у бакалавров)"
+            "Парсинг расписания в БД и сохранение файла с ним в папке rasp_files. "
+            + "Принимает файл в формате xlsx\n"
+            + "## Обязательные параметры:\n"
+            + " - **start_date** - день первого семестра для БАКАЛАВРИАТА\n"
+            + " - **end_date** - день последнего учебного дня\n"
+            + " - **file** - файл семестра, который нужно распарсить\n"
+            + "\n_Даты писать в строковом виде в формате YYYY-MM-DD (год-месяц-день)_\n"
+            + "\n_Все даты включительно [start_date, end_date]_\n"
+            + "\n## Не обязательные параметры:\n"
+            + " - **magic_start_date** - первый день обучения магистров "
+            + "(если не задан расписание магистров начнется как у бакалавров)"
     ),
 )
 async def parse_sem(
-    background_tasks: BackgroundTasks,
-    file: UploadFile,
-    start_date: str,
-    end_date: str,
-    magic_start: str = None,
+        background_tasks: BackgroundTasks,
+        file: UploadFile,
+        start_date: str,
+        end_date: str,
+        magic_start: str = None,
 ):
     """Парсинг расписания семестра"""
     file_path = await download_file(file)
@@ -156,25 +157,25 @@ async def parse_sem(
     "/exam",
     summary="Парсинг расписания сессии",
     description=(
-        "Парсинг расписания сессии в БД и сохранение файла с ним в папке rasp_files. "
-        + "Принимает файл в формате xlsx\n"
-        + "## Обязательные параметры:\n"
-        + " - **start_date** - день первого семестра для БАКАЛАВРИАТА\n"
-        + " - **end_date** - день последнего учебного дня\n"
-        + " - **file** - файл семестра, который нужно распарсить\n"
-        + "\n_Даты писать в строковом виде в формате YYYY-MM-DD (год-месяц-день)_\n"
-        + "\n_Все даты включительно [start_date, end_date]_\n"
-        + "\n## Не обязательные параметры:\n"
-        + " - **magic_start_date** - первый день обучения магистров "
-        + "(если не задан расписание магистров начнется как у бакалавров)"
+            "Парсинг расписания сессии в БД и сохранение файла с ним в папке rasp_files. "
+            + "Принимает файл в формате xlsx\n"
+            + "## Обязательные параметры:\n"
+            + " - **start_date** - день первого семестра для БАКАЛАВРИАТА\n"
+            + " - **end_date** - день последнего учебного дня\n"
+            + " - **file** - файл семестра, который нужно распарсить\n"
+            + "\n_Даты писать в строковом виде в формате YYYY-MM-DD (год-месяц-день)_\n"
+            + "\n_Все даты включительно [start_date, end_date]_\n"
+            + "\n## Не обязательные параметры:\n"
+            + " - **magic_start_date** - первый день обучения магистров "
+            + "(если не задан расписание магистров начнется как у бакалавров)"
     ),
 )
 async def parse_exam(
-    background_tasks: BackgroundTasks,
-    file: UploadFile,
-    start_date: str,
-    end_date: str,
-    magic_start: str = None,
+        background_tasks: BackgroundTasks,
+        file: UploadFile,
+        start_date: str,
+        end_date: str,
+        magic_start: str = None,
 ):
     """Парсинг расписания сессии"""
     file_path = await download_file(file)
@@ -194,16 +195,16 @@ async def parse_exam(
 
 
 async def parse_file(
-    file_path: str,
-    rasp_type: RaspType,
-    start_date: str,
-    end_date: str,
-    magic_start_date: str,
-    background_tasks: BackgroundTasks,
+        file_path: str,
+        rasp_type: RaspType,
+        start_date: str,
+        end_date: str,
+        magic_start_date: str,
+        background_tasks: BackgroundTasks,
 ) -> JSONResponse:
     """Парсит файл по переданным параметрам в фоне"""
     cmd_params = CmdParams()
-    cmd_params.is_sem = True if rasp_type == RaspType.SEMESTR else RaspType.EXAM
+    cmd_params.is_sem = True if rasp_type == RaspType.SEMESTR else False
     cmd_params.start_date = start_date
     cmd_params.end_date = end_date
     cmd_params.filename = file_path
@@ -222,7 +223,7 @@ async def parse_file(
 
 
 def save_new_request(
-    filename: str, start_date: str, end_date: str, magic_start: str = None
+        filename: str, start_date: str, end_date: str, magic_start: str = None
 ) -> int:
     """Записать в БД новую заявку"""
     db = Database()
@@ -255,7 +256,7 @@ async def download_file(file: UploadFile) -> str | None:
 
 @app.get("/{req_id}")
 async def reparse_by_req_id(
-    req_id: int, background_tasks: BackgroundTasks
+        req_id: int, background_tasks: BackgroundTasks
 ) -> JSONResponse:
     """Запустить повторный парсинг по номер заявки"""
     db = Database()

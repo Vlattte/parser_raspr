@@ -16,7 +16,6 @@ from datetime import timedelta
 
 # usefull
 from openpyxl import load_workbook
-from openpyxl.styles.colors import Color
 
 from progress.bar import PixelBar
 from dotenv import load_dotenv
@@ -877,22 +876,7 @@ class VegaRaspParser:
 
     def get_dep_id(self, cel_color: int, cell_str: str) -> int:
         """Получить по цвету ячейки id кафедры"""
-        department_name = "другая"
-        excel_color = Color(rgb=cel_color)
-
-        if excel_color in CellColors.VEGA_DEP_COLORS:
-            department_name = "ВЕГА"
-        elif excel_color in CellColors.ONLY_VEGA_DEP_COLORS:
-            department_name = "только для ВЕГИ"
-        elif excel_color in CellColors.VM_DEP_COLORS:
-            department_name = "ВМ"
-        elif excel_color in CellColors.ONLY_VM_DEP_COLORS:
-            department_name = "только для ВМ"
-        elif excel_color in CellColors.OTHERS_DEP_COLORS:
-            department_name = "другая"
-        else:
-            print(f"Новый цвет кафедры (ячейка {cell_str}): {cel_color}")
-            department_name = "другая"
+        department_name = table_utils.get_dep_name(cel_color, cell_str)
 
         dep_params = {"title": department_name}
         department_id = self.db.get_id("sc_department", dep_params)

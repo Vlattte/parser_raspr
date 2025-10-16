@@ -4,6 +4,9 @@ import re
 from copy import deepcopy
 
 from src.structs import GroupParts
+from src.structs import CellColors
+
+from openpyxl.styles.colors import Color
 
 
 def split_grouped_cells(s: str, delim: str) -> list[str]:
@@ -123,6 +126,28 @@ def get_lesson_type(lesson: str) -> str:
         lesson_type = "лб"
     return lesson_type
 
+
+
+def get_dep_name(cel_color: int, cell_str: str) -> str:
+    """Получить название кафедры или выдать подсказку о новом использованном цвете"""
+    department_name = "другая"
+    excel_color = Color(rgb=cel_color)
+
+    if excel_color in CellColors.VEGA_DEP_COLORS:
+        department_name = "ВЕГА"
+    elif excel_color in CellColors.ONLY_VEGA_DEP_COLORS:
+        department_name = "только для ВЕГИ"
+    elif excel_color in CellColors.VM_DEP_COLORS:
+        department_name = "ВМ"
+    elif excel_color in CellColors.ONLY_VM_DEP_COLORS:
+        department_name = "только для ВМ"
+    elif excel_color in CellColors.OTHERS_DEP_COLORS:
+        department_name = "другая"
+    else:
+        print(f"Новый цвет кафедры (ячейка {cell_str}): {cel_color}")
+        department_name = "другая"
+
+    return department_name
 
 
 def get_cell_color(ws, row, col):
