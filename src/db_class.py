@@ -12,7 +12,7 @@ from psycopg2 import connect
 from psycopg2 import Error
 from dotenv import load_dotenv
 
-from src.utils import filepath_to_filename
+from src.utils.str_utils import filepath_to_filename
 
 from src.structs import ReqStatus
 from src.structs import Rasp18Data
@@ -351,10 +351,7 @@ class Database:
         table_name = "sc_rasp18"
 
         if data.day_id is None:
-            raise ValueError(
-                "Ошибка в датах! Невозможно продолжать парсинг,\
-                    устраните ошибки с параметрами START_DATE и END_DATE"
-            )
+            raise ValueError("id дня оказался None (такого нет в БД)")
 
         # только часы и минуты, секунды образаем
         hm_format = r"(\d{1,2}[:\-.]\d\d)[:\-.]\d\d"
@@ -643,7 +640,12 @@ class Database:
             for req_id, file_nm, _, _, _, report_dttm in req_data
         }
 
-        latest_req = max(stat_list.items(), key=lambda vals: vals[1]["report_dttm"])
+        latest_req = max(
+            stat_list.items(),
+            key=lambda vals: (
+                vals[1]["report_dttm"] if vals[1]["status"] == "FINISHED" else ""
+            ),
+        )
         stat_list[latest_req[0]]["is_latest"] = True
 
         return stat_list
