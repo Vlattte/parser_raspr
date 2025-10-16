@@ -6,12 +6,7 @@ from os import getenv
 from os import mkdir
 from os import path
 
-from datetime import datetime
-
-from re import sub as regex_sub
-
 import uvicorn
-import asyncio
 
 from dotenv import load_dotenv
 
@@ -19,6 +14,7 @@ from fastapi import FastAPI
 from fastapi import UploadFile
 from fastapi import BackgroundTasks
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from src.parser import VegaRaspParser
 from src.db_class import Database
@@ -35,7 +31,13 @@ app = FastAPI(
     root_path=root_path,
     servers=[{"url": f"/{root_path}"}],
 )
-
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]    
+)
 
 def is_params_good(cmd_params: CmdParams) -> bool:
     """Проверка на корректность переданных аргументов"""
@@ -337,5 +339,4 @@ if __name__ == "__main__":
     # ЗАПУСК ИЗ КОНСОЛИ #
     #####################
     # если в консоли ничего не передали, будет использовать .env файл
-    # params = parse_cmd_argument()
-    # run_local_parser(params)
+    # run_local_parser(None)
