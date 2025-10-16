@@ -125,3 +125,17 @@ class ReqStatus(str, Enum):
     FINISHED = "FINISHED"
     ERROR = "ERROR"
 
+
+@dataclass
+class Rasp18Data:
+    """Данные для заполнения таблиц, зависимых от rasp18 и ее саму"""
+    semcode:    int = -1
+    day_id:     int = -1
+    pair:       int = -1
+    worktype:   int = -1
+    disc_id:    int = -1
+    timestart:  str = ""
+    timeend:    str = ""
+    prep_id:    int = -1
+    room:       str = ""
+    time_ver:   int = -1

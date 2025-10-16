@@ -30,6 +30,38 @@ class Patterns(str, Enum):
 
     ANOTHER_SUBGROUPS = r"(\d*пг)"
 
+def split_grouped_cells(s: str, delim: str) -> list[str]:
+    """
+    Разделяет объединенных преподов/аудитории на несколько
+    Также убираются:
+        - лишние пробелы
+        - переносы строки
+        - ВСЕ запятые
+    """
+    if s is None:
+        return [None]
+    if s.find(delim) == -1:
+        return [s]
+
+    parts = s.split(delim)
+    symbs_to_del = [',', '\n']
+    parts = list(map(lambda part: part.strip(), parts))
+    for symb in symbs_to_del:
+        parts = list(map(lambda part: part.replace(symb, ''), parts))
+    return parts
+
+def separate_group_cell(group_cell: str) -> list[str]:
+    """Разделяет совмещенные названия групп"""
+    if ',' in group_cell:
+        pref = group_cell[:4]
+        gr_year = group_cell[-2:]
+        group_cell = group_cell.split(",")
+        group_cell[0] += f"-{gr_year}"
+        group_cell[1:] = list(map(lambda gr: f"{pref}-{gr}", group_cell[1:]))
+    else:
+        group_cell = [group_cell]
+
+    return group_cell
 
 def get_group_parts(group_cell: str) -> GroupParts:
     """Получить название и доп информацию по группе"""
@@ -185,6 +217,7 @@ def get_time_by_order(order):
 
 
 def get_cell_color(ws, row, col):
+    """Получить цвет ячейки"""
     cell = ws.cell(row=row, column=col)
     fill = cell.fill
 
@@ -194,14 +227,14 @@ def get_cell_color(ws, row, col):
         # Это обычный RGB цвет
         if isinstance(color.rgb, str):
             return color.rgb
-        else:
-            return str(color.rgb)
+        return str(color.rgb)
+
     # Проверяем, является ли цвет тематическим
-    elif isinstance(color.theme, int):
+    if isinstance(color.theme, int):
         # Это тематический цвет - получаем через тему
         return get_theme_color(color.theme, color.tint)
-    else:
-        return None
+
+    return None
 
 
 def get_theme_color(theme_index, tint=0):
