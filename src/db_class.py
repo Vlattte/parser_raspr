@@ -77,7 +77,7 @@ class Database:
             return None
         except Error as error:
             print(f"PostgreSQL error occured {error} after request:\n{query}")
-            exit(1)
+            raise error
         finally:
             if self.conn:
                 self.conn.commit()
