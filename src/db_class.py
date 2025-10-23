@@ -12,8 +12,10 @@ from psycopg2 import connect
 from psycopg2 import Error
 from dotenv import load_dotenv
 
+from src.utils.str_utils import filepath_to_filename
+
 from src.structs import ReqStatus
-from src.utils import filepath_to_filename
+from src.structs import Rasp18Data
 
 
 class Database:
@@ -75,7 +77,7 @@ class Database:
             return None
         except Error as error:
             print(f"PostgreSQL error occured {error} after request:\n{query}")
-            exit(1)
+            raise error
         finally:
             if self.conn:
                 self.conn.commit()
@@ -337,23 +339,9 @@ class Database:
 
         return rasp18_days_id
 
-    def set_rasp18(
-        self,
-        semcode: int,
-        day_id: int,
-        pair: int,
-        kind: int,
-        worktype: int,
-        disc_id: int,
-        timestart: str,
-        timeend: str,
-        prep_id: int,
-        room: str,
-        time_ver: int,
-    ):
+    def set_rasp18(self, data: Rasp18Data):
         """
         ячейка в таблице расписания
-        kind integer -- 0обычное,1перенос,2повтор
         worktype integer -– 0пр,1лк,2лб,
             -- 11экз,12зач,13зач-д,
             -- 14кр,15кп
@@ -362,26 +350,28 @@ class Database:
         # быть две пары одновременно
         table_name = "sc_rasp18"
 
-        if day_id is None:
-            raise ValueError(
-                "Ошибка в датах! Невозможно продолжать парсинг,\
-                    устраните ошибки с параметрами START_DATE и END_DATE"
-            )
+        if data.day_id is None:
+            raise ValueError("id дня оказался None (такого нет в БД)")
 
         # только часы и минуты, секунды образаем
         hm_format = r"(\d{1,2}[:\-.]\d\d)[:\-.]\d\d"
-        timestart_hm = re.sub(hm_format, r"\1", timestart)
-        timeend_hm = re.sub(hm_format, r"\1", timeend)
+        timestart_hm = re.sub(hm_format, r"\1", data.timestart)
+        timeend_hm = re.sub(hm_format, r"\1", data.timeend)
 
-        if prep_id is not None and room is not None:
+        # 0 обычное,1 перенос,2 повтор
+        pair_kind = 0
+
+        if data.prep_id is not None and data.room is not None:
             exists_query = f"""
         SELECT r18.id FROM sc_rasp18 r18
             INNER JOIN sc_rasp18_preps p ON r18.id = p.rasp18_id
             INNER JOIN sc_rasp18_rooms r ON r18.id = r.rasp18_id
-        WHERE semcode = {semcode} AND day_id = {day_id} AND pair = {pair}
-            AND kind = {kind} AND worktype = {worktype} AND disc_id = {disc_id}
+        WHERE semcode = {data.semcode} AND day_id = {data.day_id} 
+            AND pair = {data.pair} AND kind = {pair_kind} 
+            AND worktype = {data.worktype} AND disc_id = {data.disc_id}
             AND timestart = '{timestart_hm}' AND timeend = '{timeend_hm}'
-            AND p.prep_id = {prep_id} AND r.room = '{room}' AND r18.time_ver = {time_ver};
+            AND p.prep_id = {data.prep_id} AND r.room = '{data.room}' 
+            AND r18.time_ver = {data.time_ver};
         """
             rasp18_id = self.send_request(exists_query, is_return=True)
             if rasp18_id is not None:
@@ -391,8 +381,9 @@ class Database:
                 INSERT INTO {table_name} \
                 (semcode, day_id, pair, kind, worktype, disc_id, timestart, timeend, time_ver) \
                 VALUES \
-                ({semcode}, {day_id}, {pair}, {kind}, {worktype}, \
-                {disc_id}, '{timestart_hm}', '{timeend_hm}', {time_ver}) \
+                ({data.semcode}, {data.day_id}, {data.pair}, \
+                {pair_kind}, {data.worktype}, {data.disc_id}, \
+                '{timestart_hm}', '{timeend_hm}', {data.time_ver}) \
                 ON CONFLICT DO NOTHING RETURNING id;"
         rasp18_id = self.send_request(query, True)
         return rasp18_id
@@ -616,6 +607,9 @@ class Database:
 
     def get_meta_statuses(self) -> dict:
         """Получить текущее состояние ВСЕХ заявок"""
+        if not self.check_meta_exists():
+            return None
+
         table_name = "parser_meta.status"
         query = f"SELECT * FROM {table_name};"
 
@@ -640,10 +634,19 @@ class Database:
                 **{
                     "file_name": filepath_to_filename(file_nm),
                     "report_dttm": str(report_dttm),
+                    "is_latest": False,
                 },
             }
             for req_id, file_nm, _, _, _, report_dttm in req_data
         }
+
+        latest_req = max(
+            stat_list.items(),
+            key=lambda vals: (
+                vals[1]["report_dttm"] if vals[1]["status"] == "FINISHED" else ""
+            ),
+        )
+        stat_list[latest_req[0]]["is_latest"] = True
 
         return stat_list
 
@@ -693,9 +696,15 @@ class Database:
         - end_date - последняя дата, загруженная в заявке
         - magic_start - первый день, записанный для магистров
         """
+        if not self.check_meta_exists():
+            return {"Warning": "No requests yet"}
+
         table_name = "parser_meta.requests"
         req_query = f"SELECT rasp_filename, start_date, end_date, magic_start FROM {table_name} \
                     WHERE req_id = {req_id};"
         data = self.send_request(req_query, is_return=True)
-        print(data)
+
+        if data is None:
+            return {"ERROR": "Bad request id"}
+
         return data[0]

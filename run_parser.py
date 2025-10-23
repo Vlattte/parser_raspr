@@ -6,12 +6,7 @@ from os import getenv
 from os import mkdir
 from os import path
 
-from datetime import datetime
-
-from re import sub as regex_sub
-
 import uvicorn
-import asyncio
 
 from dotenv import load_dotenv
 
@@ -19,6 +14,7 @@ from fastapi import FastAPI
 from fastapi import UploadFile
 from fastapi import BackgroundTasks
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from src.parser import VegaRaspParser
 from src.db_class import Database
@@ -28,9 +24,20 @@ from src.structs import RaspType
 from src.structs import ReqStatus
 
 load_dotenv()
-
-app = FastAPI(title="API парсера расписания")
 root_path = getenv("DOMEN_ROOT_PATH") if not None else "rasp_parse"
+
+app = FastAPI(
+    title="API парсера расписания",
+    root_path=root_path,
+    servers=[{"url": f"/{root_path}"}],
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 
 
 def is_params_good(cmd_params: CmdParams) -> bool:
@@ -106,28 +113,28 @@ def parse_cmd_argument() -> CmdParams | None:
 
 
 @app.post(
-    f"/{root_path}/sem",
+    "/sem",
     summary="Парсинг расписания семестра",
     description=(
-        "Парсинг расписания в БД и сохранение файла с ним в папке rasp_files. "
-        + "Принимает файл в формате xlsx\n"
-        + "## Обязательные параметры:\n"
-        + " - **start_date** - день первого семестра для БАКАЛАВРИАТА\n"
-        + " - **end_date** - день последнего учебного дня\n"
-        + " - **file** - файл семестра, который нужно распарсить\n"
-        + "\n_Даты писать в строковом виде в формате YYYY-MM-DD (год-месяц-день)_\n"
-        + "\n_Все даты включительно [start_date, end_date]_\n"
-        + "\n## Не обязательные параметры:\n"
-        + " - **magic_start_date** - первый день обучения магистров "
-        + "(если не задан расписание магистров начнется как у бакалавров)"
+            "Парсинг расписания в БД и сохранение файла с ним в папке rasp_files. "
+            + "Принимает файл в формате xlsx\n"
+            + "## Обязательные параметры:\n"
+            + " - **start_date** - день первого семестра для БАКАЛАВРИАТА\n"
+            + " - **end_date** - день последнего учебного дня\n"
+            + " - **file** - файл семестра, который нужно распарсить\n"
+            + "\n_Даты писать в строковом виде в формате YYYY-MM-DD (год-месяц-день)_\n"
+            + "\n_Все даты включительно [start_date, end_date]_\n"
+            + "\n## Не обязательные параметры:\n"
+            + " - **magic_start_date** - первый день обучения магистров "
+            + "(если не задан расписание магистров начнется как у бакалавров)"
     ),
 )
 async def parse_sem(
-    background_tasks: BackgroundTasks,
-    file: UploadFile,
-    start_date: str,
-    end_date: str,
-    magic_start: str = None,
+        background_tasks: BackgroundTasks,
+        file: UploadFile,
+        start_date: str,
+        end_date: str,
+        magic_start: str = None,
 ):
     """Парсинг расписания семестра"""
     file_path = await download_file(file)
@@ -147,28 +154,28 @@ async def parse_sem(
 
 
 @app.post(
-    f"/{root_path}/exam",
+    "/exam",
     summary="Парсинг расписания сессии",
     description=(
-        "Парсинг расписания сессии в БД и сохранение файла с ним в папке rasp_files. "
-        + "Принимает файл в формате xlsx\n"
-        + "## Обязательные параметры:\n"
-        + " - **start_date** - день первого семестра для БАКАЛАВРИАТА\n"
-        + " - **end_date** - день последнего учебного дня\n"
-        + " - **file** - файл семестра, который нужно распарсить\n"
-        + "\n_Даты писать в строковом виде в формате YYYY-MM-DD (год-месяц-день)_\n"
-        + "\n_Все даты включительно [start_date, end_date]_\n"
-        + "\n## Не обязательные параметры:\n"
-        + " - **magic_start_date** - первый день обучения магистров "
-        + "(если не задан расписание магистров начнется как у бакалавров)"
+            "Парсинг расписания сессии в БД и сохранение файла с ним в папке rasp_files. "
+            + "Принимает файл в формате xlsx\n"
+            + "## Обязательные параметры:\n"
+            + " - **start_date** - день первого семестра для БАКАЛАВРИАТА\n"
+            + " - **end_date** - день последнего учебного дня\n"
+            + " - **file** - файл семестра, который нужно распарсить\n"
+            + "\n_Даты писать в строковом виде в формате YYYY-MM-DD (год-месяц-день)_\n"
+            + "\n_Все даты включительно [start_date, end_date]_\n"
+            + "\n## Не обязательные параметры:\n"
+            + " - **magic_start_date** - первый день обучения магистров "
+            + "(если не задан расписание магистров начнется как у бакалавров)"
     ),
 )
 async def parse_exam(
-    background_tasks: BackgroundTasks,
-    file: UploadFile,
-    start_date: str,
-    end_date: str,
-    magic_start: str = None,
+        background_tasks: BackgroundTasks,
+        file: UploadFile,
+        start_date: str,
+        end_date: str,
+        magic_start: str = None,
 ):
     """Парсинг расписания сессии"""
     file_path = await download_file(file)
@@ -188,16 +195,16 @@ async def parse_exam(
 
 
 async def parse_file(
-    file_path: str,
-    rasp_type: RaspType,
-    start_date: str,
-    end_date: str,
-    magic_start_date: str,
-    background_tasks: BackgroundTasks,
+        file_path: str,
+        rasp_type: RaspType,
+        start_date: str,
+        end_date: str,
+        magic_start_date: str,
+        background_tasks: BackgroundTasks,
 ) -> JSONResponse:
     """Парсит файл по переданным параметрам в фоне"""
     cmd_params = CmdParams()
-    cmd_params.is_sem = True if rasp_type == RaspType.SEMESTR else RaspType.EXAM
+    cmd_params.is_sem = True if rasp_type == RaspType.SEMESTR else False
     cmd_params.start_date = start_date
     cmd_params.end_date = end_date
     cmd_params.filename = file_path
@@ -216,7 +223,7 @@ async def parse_file(
 
 
 def save_new_request(
-    filename: str, start_date: str, end_date: str, magic_start: str = None
+        filename: str, start_date: str, end_date: str, magic_start: str = None
 ) -> int:
     """Записать в БД новую заявку"""
     db = Database()
@@ -247,14 +254,19 @@ async def download_file(file: UploadFile) -> str | None:
     return file_path
 
 
-@app.get(f"/{root_path}/")
+@app.get("/{req_id}")
 async def reparse_by_req_id(
-    req_id: int, background_tasks: BackgroundTasks
+        req_id: int, background_tasks: BackgroundTasks
 ) -> JSONResponse:
     """Запустить повторный парсинг по номер заявки"""
     db = Database()
     db.set_conn()
-    file_path, start_date, end_date, magic_start = db.get_req_data(req_id)
+
+    req_data = db.get_req_data(req_id)
+    if isinstance(req_data, dict):
+        return JSONResponse(content=req_data, status_code=400)
+
+    file_path, start_date, end_date, magic_start = req_data
 
     if not path.isfile(file_path):
         return JSONResponse(
@@ -274,20 +286,28 @@ async def reparse_by_req_id(
     return status
 
 
-@app.get(f"/{root_path}")
+@app.get("/")
 async def get_req_statuses() -> JSONResponse:
     """Получить статусы заявок на парсинг в формате:
     {
-        req_id: int,
-        status: ReqStatus,
-        parsing_percent: int,
-        is_latest: bool
+        req_id: {
+            status: ReqStatus,
+            parsing_percent: int,
+            file_name: str,
+            report_dttm: date,
+            is_latest: bool
+        }
     }
     """
     db = Database()
     db.set_conn()
 
     statuses = db.get_meta_statuses()
+    if statuses is None:
+        return JSONResponse(
+            content={"WARNING": "No requests yet"},
+            status_code=400,
+        )
 
     db.close_conn()
     return JSONResponse(status_code=200, content=statuses)
@@ -314,11 +334,10 @@ if __name__ == "__main__":
     #####################
     # ЗАПУСК ВЕБ ВЕРСИИ #
     #####################
-    uvicorn.run("run_parser:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("run_parser:app", host="0.0.0.0", port=8000, reload=True)
 
     #####################
     # ЗАПУСК ИЗ КОНСОЛИ #
     #####################
     # если в консоли ничего не передали, будет использовать .env файл
-    # params = parse_cmd_argument()
-    # run_local_parser(params)
+    # run_local_parser(None)

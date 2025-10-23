@@ -1,10 +1,8 @@
 """Парсер расписания с сайта vega.mirea.ru"""
 
 # std
-from os import getenv
 from os import path
-
-from copy import deepcopy
+from os import getenv
 
 import re
 
@@ -18,7 +16,6 @@ from datetime import timedelta
 
 # usefull
 from openpyxl import load_workbook
-from openpyxl.styles.colors import Color
 
 from progress.bar import PixelBar
 from dotenv import load_dotenv
@@ -27,8 +24,14 @@ from dotenv import load_dotenv
 from psycopg2 import Error as DBError
 
 # custom
-from src import utils
+from src.utils import utils
+from src.utils import str_utils
+from src.utils import time_utils
+from src.utils import table_utils
+
 from src.db_class import Database
+
+from src.structs import Rasp18Data
 
 from src.structs import CmdParams
 from src.structs import ListData
@@ -58,7 +61,7 @@ class VegaRaspParser:
         self.db = Database()
 
         # код семестра расписания
-        self.semcode = utils.get_current_semcode()
+        self.semcode = time_utils.get_current_semcode()
 
         # очищаем ли базу
         pre_clear = False
@@ -114,7 +117,7 @@ class VegaRaspParser:
         self.version = 0
 
         # Год начала и конца обучения
-        self.start_year, self.end_year = utils.get_stud_years()
+        self.start_year, self.end_year = time_utils.get_stud_years()
 
     def init_from_cmd_params(self, cmd_params: CmdParams):
         """Иницализация с помощью CmdParams"""
@@ -185,7 +188,7 @@ class VegaRaspParser:
 
     def parse(self):
         """Парсинг исходя из параметров .env"""
-        fin_req_status = ReqStatus.FINISHED
+        fin_req_status = ReqStatus.FINISHED.value
         try:
             self.db.set_conn()
 
@@ -206,11 +209,11 @@ class VegaRaspParser:
                 self.parse_exam()
 
         except DBError as db_error:
-            fin_req_status = ReqStatus.ERROR
+            fin_req_status = ReqStatus.ERROR.value
             print(f"DBException triggered: {db_error}")
 
         except Exception as error:
-            fin_req_status = ReqStatus.ERROR
+            fin_req_status = ReqStatus.ERROR.value
             self.db.close_conn()
             print(f"Exception triggered: {error}")
 
@@ -221,11 +224,14 @@ class VegaRaspParser:
 
     def wait_req_queue_free(self):
         """Ждем пока в БД ВСЕ заявки до нашей будут выполнены (или провалены)"""
-        self.db.update_req_status(self.req_id, ReqStatus.WAITING)
+        self.db.update_req_status(self.req_id, ReqStatus.WAITING.value)
         while True:
             reqs_before = self.db.get_reqs_before(self.req_id)
             if not reqs_before:
-                print(f"\nЗапуск заявки [{self.req_id}] в промежутке [{self.start_date}, {self.end_date}]!\n")
+                print(
+                    f"\nЗапуск заявки [{self.req_id}] в промежутке \
+                        [{self.start_date}, {self.end_date}]!\n"
+                )
                 return
             sleep(2)
 
@@ -260,7 +266,7 @@ class VegaRaspParser:
         # ------------------Определяем границы расписания------------------
         min_col = ws.min_column
         max_col = ws.max_column
-        max_row = utils.get_max_row(ws)
+        max_row = table_utils.get_max_row(ws)
         # -----------------------------------------------------------------
         # вытаскиваем все нужное из заголовка
         self.get_version(max_row, ws)
@@ -274,22 +280,15 @@ class VegaRaspParser:
         else:
             self.start_date, self.end_date = self.db.get_dates(self.semcode)
 
-        # TODO deprecated, теперь добавляем новую версию с какой-то недели (удалить при следующем коммите)
-        # # очистка данных расписания в период между заданными в конфиге датами
-        # self.db.clear_rasp_data_between_weeks(
-        #     semcode=self.semcode,
-        #     is_semestr=default_rasp,
-        #     start_date=self.first_day,
-        #     end_date=self.last_day,
-        # )
-
         # ---------------Считаем сколько всего групп-----------------------------
         group_count = self.get_group_count(ws, min_col, max_col)
         cur_percent = 0
         percent_step = 100 / group_count
 
         # ---------------Инициализируем статус парсинга в мета таблице-----------
-        self.db.update_req_status(req_id=self.req_id, new_status=ReqStatus.PARSING)
+        self.db.update_req_status(
+            req_id=self.req_id, new_status=ReqStatus.PARSING.value
+        )
 
         # ---------------Парсим расписание в цикле по группам--------------------
         merged_cells = ws.merged_cells
@@ -298,19 +297,24 @@ class VegaRaspParser:
             if not self.is_group_cell(group_cell):
                 continue
 
-            if default_rasp:
-                self.parse_default_col(col, ws, max_row, group_cell, merged_cells)
-            else:
-                self.parse_exam_col(col, ws, max_row, group_cell)
+            # если объединили несколько групп
+            group_cell = table_utils.separate_group_cell(group_cell)
 
-            cur_percent += percent_step
-            self.db.update_req(
-                req_id=self.req_id,
-                new_status=ReqStatus.PARSING,
-                cur_percent=cur_percent,
-            )
+            for group in group_cell:
+                if default_rasp:
+                    self.parse_default_col(col, ws, max_row, group, merged_cells)
+                else:
+                    self.parse_exam_col(col, ws, max_row, group)
+
+                cur_percent += percent_step
+                self.db.update_req(
+                    req_id=self.req_id,
+                    new_status=ReqStatus.PARSING.value,
+                    cur_percent=cur_percent,
+                )
+
         self.db.update_req(
-            req_id=self.req_id, new_status=ReqStatus.FINISHED, cur_percent=100
+            req_id=self.req_id, new_status=ReqStatus.FINISHED.value, cur_percent=100
         )
 
     @staticmethod
@@ -330,12 +334,13 @@ class VegaRaspParser:
             group_cell = ws.cell(self.group_row, col).value
             if not self.is_group_cell(group_cell):
                 continue
-            group_count += 1
+            group_cell = table_utils.separate_group_cell(group_cell)
+            group_count += len(group_cell)
         return group_count
 
     def parse_default_col(self, col, ws, max_row, group_cell, merged_cells):
         """Разбор колонки группы"""
-        group_parts = utils.get_group_parts(group_cell)
+        group_parts = table_utils.get_group_parts(group_cell)
         group_name = group_parts.name
         group_id = self.db.set_group(group_name)
 
@@ -354,7 +359,7 @@ class VegaRaspParser:
             progress_bar.start()
 
         # Магистерская группа или нет
-        is_magic = utils.is_magic_group(group_name)
+        is_magic = str_utils.is_magic_group(group_name)
 
         while row < max_row:
             if self.is_debug:
@@ -384,15 +389,9 @@ class VegaRaspParser:
             if cur_order is not None:
                 order = cur_order
 
-            # является ли длинной парой (НИР, ВОЕНКА, условно на весь день)
+            # является ли длинной парой (НИР, ВОЕНКА на весь день)
             coord = ws.cell(row, col).coordinate
-            lesson_count = utils.get_lesson_count(merged_cells, coord)
-
-            # по цвету определяем принадлежность к кафедре
-            cur_color = utils.get_cell_color(ws, row, col)
-            department_id = self.get_dep_id(
-                cel_color=cur_color, cell_str=f"{row}, {col}"
-            )
+            lesson_count = table_utils.get_lesson_count(merged_cells, coord)
 
             # разделение ячейки названия пары на части
             lesson_parts = self.get_lesson_parts(lesson_cell, is_magic)
@@ -403,13 +402,21 @@ class VegaRaspParser:
 
             # если элементы lesson_parts массивы, то для каждго из них делем записи
             complex_len = 1
-            time_parts = utils.get_time_from_lesson(lesson_cell)
+            time_parts = time_utils.get_time_from_lesson(lesson_cell)
 
             # если сложное название дисциплины (с временем и неделями)
             if len(time_parts) > 0:
                 complex_len = len(time_parts)
 
-            # заполнение БД новыми данными
+            # по цвету определяем принадлежность к кафедре
+            cur_color = table_utils.get_cell_color(ws, row, col)
+            department_id = self.get_dep_id(
+                cel_color=cur_color, cell_str=f"{row}, {col}"
+            )
+
+            ##################
+            # Заполнение БД  #
+            ##################
             for comp_record in range(complex_len):
                 if len(time_parts) > 0:
                     t = time_parts[comp_record]
@@ -440,7 +447,7 @@ class VegaRaspParser:
 
                     # смещение, если пара длится несколько пар
                     if lesson_parts.timestart is not None:
-                        lesson_parts.timestart = utils.get_time_by_order(pair_num + 1)
+                        lesson_parts.timestart = time_utils.get_time_by_order(pair_num + 1)
 
             # переходим к новой паре
             row += 1
@@ -488,7 +495,7 @@ class VegaRaspParser:
 
             if time_start is None:
                 # если только эта строка пустая, то это разделитель
-                is_splitter_row = utils.is_hsplitter(ws, row)
+                is_splitter_row = table_utils.is_hsplitter(ws, row)
                 if is_splitter_row:
                     # progress_bar.next()
                     row += 1
@@ -507,19 +514,21 @@ class VegaRaspParser:
 
             # ставим длительность экзамена 1.5 часа (2 академ часа)
             else:
-                time_end = utils.time_in_90_minutes(time_start)
+                time_end = time_utils.time_in_90_minutes(time_start)
 
-            cur_order = utils.get_order_by_time(time_start)
+            cur_order = time_utils.get_order_by_time(time_start)
 
-            # Заполение таблиц
+            ####################
+            # Заполение таблиц #
+            ####################
             month = int(exam_date[-2:])
             if month > 8:
                 exam_date += "." + str(self.start_year)
             else:
                 exam_date += "." + str(self.end_year)
 
-            worktype = utils.get_worktype(exam_type)
-            cur_color = utils.get_cell_color(ws, row, col)
+            worktype = str_utils.get_worktype(exam_type)
+            cur_color = table_utils.get_cell_color(ws, row, col)
             department_id = self.get_dep_id(
                 cel_color=cur_color, cell_str=f"{row}, {col}"
             )
@@ -544,43 +553,28 @@ class VegaRaspParser:
                 continue
 
             params = {"day": cur_date, "semcode": self.semcode}
-            day_id = self.db.get_id(table_name="sc_rasp18_days", params=params)
+            day_id = self.get_day_id(params)
 
-            prep_id = None
-            if teacher is not None:
-                params = {"fio": teacher}
-                prep_id = self.db.get_id(table_name="sc_prep", params=params)
-                # если перепутали имя препода, добавим такую
-                if prep_id is None:
-                    prep_id = self.db.set_prep(fio=teacher)
+            # распределение пар по преподавателям
+            disc_teachers = table_utils.split_grouped_cells(teacher, "\n")
 
-            # set_rasp18
-            rasp18_id = self.db.set_rasp18(
-                semcode=self.semcode,
-                day_id=day_id,
-                pair=cur_order,
-                kind=0,
-                worktype=worktype,
-                disc_id=disc_id,
-                timestart=str(time_start),
-                timeend=str(time_end),
-                prep_id=prep_id,
-                room=room,
-                time_ver=self.req_time,
-            )
-            if rasp18_id is None:
-                return
+            # если преподавателей несколько, делаем несколько записей
+            for t in disc_teachers:
+                prep_id = self.db.set_prep(fio=t)
 
-            # set_rasp18_groups
-            self.db.set_rasp18_groups(
-                rasp18_id=rasp18_id, group_id=group_id, subgroup=0
-            )
-            # set_rasp18_preps
-            if prep_id is not None:
-                self.db.set_rasp18_preps(rasp18_id=rasp18_id, prep_id=prep_id)
-            # set_rasp18_rooms
-            if room is not None:
-                self.db.set_rasp18_rooms(rasp18_id=rasp18_id, room=room)
+                rasp18_data = Rasp18Data(
+                    semcode=self.semcode,
+                    day_id=day_id,
+                    pair=cur_order,
+                    worktype=worktype,
+                    disc_id=disc_id,
+                    timestart=str(time_start),
+                    timeend=str(time_end),
+                    prep_id=prep_id,
+                    room=room,
+                    time_ver=self.req_time,
+                )
+                self.set_rasp18_tables(data=rasp18_data, group_id=group_id, sub_group=0)
 
             # пропускаем уже разобранные ячейки экзамена
             # progress_bar.next(3)
@@ -599,8 +593,8 @@ class VegaRaspParser:
         lesson_parts.sub_group = self.get_subgroup(lesson_cell)
 
         # получаем тип пары (лк, пр, лб)
-        lesson_type = utils.get_lesson_type(lesson_cell)
-        lesson_parts.worktype = utils.get_worktype(lesson_type)
+        lesson_type = table_utils.get_lesson_type(lesson_cell)
+        lesson_parts.worktype = str_utils.get_worktype(lesson_type)
         # получаем данные по неделям
         weeks_parts = self.get_weeks_parts(lesson_cell, is_magic)
         lesson_parts.parity = weeks_parts.parity
@@ -608,7 +602,7 @@ class VegaRaspParser:
         lesson_parts.weeks_text = weeks_parts.weeks_text
 
         # удаляем лишнее и получаем название дисциплины
-        lesson_parts.disc_name = utils.get_disc_name(lesson_cell, lesson_parts)
+        lesson_parts.disc_name = str_utils.get_disc_name(lesson_cell, lesson_parts)
 
         return lesson_parts
 
@@ -739,13 +733,25 @@ class VegaRaspParser:
             weekstext=lesson_parts.weeks_text,
         )
 
-        # таблица связи пары
+        # таблица связи пары и группы
         self.db.set_rasp7_groups(
             rasp7_id=rasp7_id, group_id=group_id, sub_group=lesson_parts.sub_group
         )
 
-        prep_id = self.db.set_prep(fio=teacher)
-        self.db.set_rasp7_preps(rasp7_id=rasp7_id, prep_id=prep_id)
+        # распределение пар по преподавателям
+        disc_teachers = table_utils.split_grouped_cells(teacher, "\n")
+
+        # если преподавателей несколько, делаем несколько записей
+        prep_ids = []
+        for t in disc_teachers:
+            prep_id = self.db.set_prep(fio=t)
+            prep_ids.append(prep_id)
+
+            if prep_id is None:
+                continue
+            # таблица преподавателей
+            prep_id = self.db.set_prep(fio=t)
+            self.db.set_rasp7_preps(rasp7_id=rasp7_id, prep_id=prep_id)
 
         # заполнение аудиторий
         self.db.set_rasp7_rooms(rasp7_id=rasp7_id, room=room)
@@ -787,43 +793,59 @@ class VegaRaspParser:
             if cur_date > self.last_day:
                 break
 
-            # смотрим id дня
-            day_id = self.db.get_id(table_name="sc_rasp18_days", params=params)
             # время пары
-            time_start = utils.get_time_by_order(order)
-            time_end = utils.time_in_90_minutes(time_start)
-
-            # если было указано какое-то особое время, то записываем
-            if lesson_parts.timestart is not None:
-                # если поставили НАЧАЛО пары пораньше
-                time_start = deepcopy(lesson_parts.timestart)
-
-                # если поставили КОНЕЦ пары пораньше
-                h, m = lesson_parts.timeend.split(":")
-                t_end_buf = time(hour=int(h), minute=int(m))
-                time_end = min(t_end_buf, time_end)
-
-            rasp18_id = self.db.set_rasp18(
-                semcode=self.semcode,
-                day_id=day_id,
-                pair=order,
-                kind=0,
-                worktype=lesson_parts.worktype,
-                disc_id=disc_id,
-                timestart=str(time_start),
-                timeend=str(time_end),
-                prep_id=prep_id,
-                room=room,
-                time_ver=self.req_time,
+            time_start, time_end = time_utils.make_lesson_duration(
+                order, lesson_parts.timestart, lesson_parts.timeend
             )
-            if rasp18_id is None:
-                return
+            day_id = self.get_day_id(params)
 
-            self.db.set_rasp18_groups(rasp18_id, group_id, lesson_parts.sub_group)
-            if prep_id is not None:
-                self.db.set_rasp18_preps(rasp18_id, prep_id)
-            if room is not None:
-                self.db.set_rasp18_rooms(rasp18_id, room)
+            for prep_id in prep_ids:
+                rasp18_data = Rasp18Data(
+                    semcode=self.semcode,
+                    day_id=day_id,
+                    pair=order,
+                    worktype=lesson_parts.worktype,
+                    disc_id=disc_id,
+                    timestart=str(time_start),
+                    timeend=str(time_end),
+                    prep_id=prep_id,
+                    room=room,
+                    time_ver=self.req_time,
+                )
+
+                self.set_rasp18_tables(
+                    data=rasp18_data,
+                    group_id=group_id,
+                    sub_group=lesson_parts.sub_group,
+                )
+
+    def get_day_id(self, day_params: dict) -> int:
+        """
+        Получить id дня с переданными параметрами для таблицы sc_rasp18_days
+            (будут добавлены в запрос WHERE)
+        returns: Если id не найден, последующая работа приведет к ошибкам =>
+            на этом этапе выбрасывается исключение
+            При нахождении id дня, возращается оно
+        """
+        day_id = self.db.get_id(table_name="sc_rasp18_days", params=day_params)
+        if day_id is None:
+            raise ValueError(
+                f"День с параметрами: {day_params} не найден в таблице sc_rasp18_days"
+            )
+        return day_id
+
+    def set_rasp18_tables(self, data: Rasp18Data, group_id: int, sub_group: int):
+        """Заполнения таблиц, зависимых от rasp18 и ее саму"""
+        rasp18_id = self.db.set_rasp18(data)
+
+        if rasp18_id is None:
+            return
+
+        self.db.set_rasp18_groups(rasp18_id, group_id, sub_group)
+        if data.prep_id is not None:
+            self.db.set_rasp18_preps(rasp18_id, data.prep_id)
+        if data.room is not None:
+            self.db.set_rasp18_rooms(rasp18_id, data.room)
 
     def get_version(self, max_row: int, ws):
         """
@@ -844,7 +866,7 @@ class VegaRaspParser:
         if not is_version:
             raise ValueError("Версия расписания не была найдена")
 
-        self.version = utils.get_version(rasp_title)
+        self.version = str_utils.get_version(rasp_title)
 
     def get_disc_id(self, lesson_name: str, department_id: int) -> int:
         """Получить id дисциплины по названию"""
@@ -854,22 +876,7 @@ class VegaRaspParser:
 
     def get_dep_id(self, cel_color: int, cell_str: str) -> int:
         """Получить по цвету ячейки id кафедры"""
-        department_name = "другая"
-        excel_color = Color(rgb=cel_color)
-
-        if excel_color in CellColors.VEGA_DEP_COLORS:
-            department_name = "ВЕГА"
-        elif excel_color in CellColors.ONLY_VEGA_DEP_COLORS:
-            department_name = "только для ВЕГИ"
-        elif excel_color in CellColors.VM_DEP_COLORS:
-            department_name = "ВМ"
-        elif excel_color in CellColors.ONLY_VM_DEP_COLORS:
-            department_name = "только для ВМ"
-        elif excel_color in CellColors.OTHERS_DEP_COLORS:
-            department_name = "другая"
-        else:
-            print(f"Новый цвет кафедры (ячейка {cell_str}): {cel_color}")
-            department_name = "другая"
+        department_name = table_utils.get_dep_name(cel_color, cell_str)
 
         dep_params = {"title": department_name}
         department_id = self.db.get_id("sc_department", dep_params)
