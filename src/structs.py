@@ -77,7 +77,7 @@ class LessonParts:
     disc_name: str = None
     sub_group: int = 0
     parity: int = 0
-    weeks_list: list[str] = None
+    weeks_list: list[int] = None
     weeks_text: str = None
     worktype: int = 0
 
@@ -90,7 +90,7 @@ class WeeksParts:
     """Сведения по неделям"""
 
     parity: int = 0
-    weeks_list: list[str] = None
+    weeks_list: list[int] = None
     weeks_text: str = None
 
 
@@ -125,6 +125,7 @@ class ReqStatus(str, Enum):
     PARSING = "PARSING"
     FINISHED = "FINISHED"
     ERROR = "ERROR"
+    DELETING = "DELETING"
 
 
 @dataclass

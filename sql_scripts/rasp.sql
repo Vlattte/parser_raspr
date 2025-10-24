@@ -437,7 +437,8 @@ CREATE TABLE sc_rasp7 (
     weekday integer,
     pair integer,
     weeksarray integer[],
-    weekstext text
+    weekstext text,
+    time_ver bigint    -- version in time since EPOCH
 );
 
 

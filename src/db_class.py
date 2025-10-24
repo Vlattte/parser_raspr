@@ -175,15 +175,16 @@ class Database:
         disc_id: int,
         weekday: int,
         pair: int,
-        weeksarray: list[str],
+        weeksarray: list[int],
         weekstext: str,
+        time_ver: int,
     ) -> int:
         """Заполнение таблицы sc_rasp7"""
         table_name = "sc_rasp7"
 
         query = f" \
-                INSERT INTO {table_name} (semcode, version, disc_id, weekday, pair, weeksarray, weekstext) \
-                VALUES ({semcode}, {version}, {disc_id}, {weekday}, {pair}, ARRAY{weeksarray}, '{weekstext}') \
+                INSERT INTO {table_name} (semcode, version, disc_id, weekday, pair, weeksarray, weekstext, time_ver) \
+                VALUES ({semcode}, {version}, {disc_id}, {weekday}, {pair}, ARRAY{weeksarray}, '{weekstext}', {time_ver}) \
                 ON CONFLICT DO NOTHING RETURNING id;"
         rasp7_id = self.send_request(query, True)
         return rasp7_id
@@ -561,12 +562,16 @@ class Database:
 
     def save_new_request(
         self, filename: str, start_date: str, end_date: str, magic_start: str = None
-    ) -> tuple[int, int]:
+    ) -> tuple[int, float]:
         """Загрузка новой заявки в БД"""
         self.create_meta_tables()
 
         table_name = "parser_meta.requests"
-        req_time = datetime.now()
+
+        # безумный трюк, чтобы убрать дробные числа у секунд
+        # 2025-09-01 23:59:59.192837 --> 2025-09-01 23:59:59
+        req_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        req_time = datetime.fromisoformat(req_time)
 
         if magic_start is None:
             magic_start = start_date
@@ -602,20 +607,18 @@ class Database:
         INSERT INTO {table_name} (req_id, status) \
         VALUES ({req_id}, '{new_status}') \
             ON CONFLICT(req_id) DO UPDATE SET \
-            status = '{new_status}';"
+            status = '{new_status.value}';"
         self.send_request(query)
 
     def get_meta_statuses(self) -> dict:
         """Получить текущее состояние ВСЕХ заявок"""
-        if not self.check_meta_exists():
-            return None
+        if not self.is_meta_good():
+            return {"Warning": "No requests yet"}
 
         table_name = "parser_meta.status"
         query = f"SELECT * FROM {table_name};"
 
         statuses = self.send_request(query, is_return=True)
-        if not statuses:
-            return {"WARNING": "No requests yet"}
         keys = ("status", "parsing_percent")
 
         # {req_id: {req_data}, ...}
@@ -652,6 +655,9 @@ class Database:
 
     def get_reqs_before(self, req_id: int) -> list | None:
         """Получить заявки до выбранной (сравниваются по времени регистрации заявки)"""
+        if not self.is_meta_good():
+            return {"Warning": "No requests yet"}
+
         table_reqs = "parser_meta.requests"
         query_cur_req = f"SELECT report_dttm FROM {table_reqs} WHERE req_id = {req_id};"
         cur_req_reg_time = self.send_request(query_cur_req, is_return=True)
@@ -669,6 +675,12 @@ class Database:
         reqs_before = self.send_request(query_reqs_before, is_return=True)
 
         return reqs_before
+
+    def is_meta_good(self) -> bool:
+        """Проверить мета таблицы на корректность"""
+        if not self.check_meta_exists() or self.is_meta_empty():
+            return False
+        return True
 
     def create_meta_tables(self):
         """Создать мета таблицы"""
@@ -688,6 +700,17 @@ class Database:
         tables_exists = self.send_request(check_query, is_return=True)
         return tables_exists
 
+    def is_meta_empty(self):
+        """True, если еще нет записей в мета таблицах"""
+        check_requests_req = "SELECT * FROM parser_meta.requests;"
+        check_status_req = "SELECT * FROM parser_meta.status;"
+        is_requests_empty = self.send_request(check_requests_req, is_return=True)
+        is_status_empty = self.send_request(check_status_req, is_return=True)
+
+        if is_requests_empty is None or is_status_empty is None:
+            return True
+        return False
+
     def get_req_data(self, req_id: int):
         """
         Получить данные по заявке:
@@ -696,7 +719,7 @@ class Database:
         - end_date - последняя дата, загруженная в заявке
         - magic_start - первый день, записанный для магистров
         """
-        if not self.check_meta_exists():
+        if not self.is_meta_good():
             return {"Warning": "No requests yet"}
 
         table_name = "parser_meta.requests"
@@ -708,3 +731,62 @@ class Database:
             return {"ERROR": "Bad request id"}
 
         return data[0]
+
+    def clear_req_data(self, req_id: int):
+        """Очистить данные по заявке"""
+        if not self.is_meta_good():
+            return {"Warning": "No requests yet"}
+
+        self.update_req_status(req_id, ReqStatus.DELETING)
+
+        req_time_request = f"""
+        SELECT report_dttm FROM parser_meta.requests 
+        WHERE req_id = {req_id};
+        """
+        req_time_ver = self.send_request(req_time_request, is_return=True)
+        if req_time_ver is None:
+            return {"WARNING": "No such request"}
+
+        req_time_ver = req_time_ver.timestamp()
+
+        def delete_table_data(rasp_table: str) -> list[int]:
+            """Удаляет таблицу и возвращет id удаленных записей"""
+            del_req = f"""
+            DELETE FROM public.{rasp_table}
+            WHERE time_ver = {req_time_ver}
+            RETURNING id;
+            """
+            ids = self.send_request(del_req, is_return=True)
+            if ids is None:
+                return None
+            ids = list(map(lambda id_tuple: id_tuple[0], ids))
+            return ids
+
+        def del_req_by_ids(table_name: str, id_field: str, ids: list[int]):
+            return f"""
+            DELETE FROM public.{table_name}
+            WHERE {id_field} in {*ids,};
+            """
+
+        rasp18_ids = delete_table_data("sc_rasp18")
+        if rasp18_ids is not None:
+            self.send_request(del_req_by_ids("sc_rasp18_groups", "rasp18_id", rasp18_ids))
+            self.send_request(del_req_by_ids("sc_rasp18_rooms", "rasp18_id", rasp18_ids))
+            self.send_request(del_req_by_ids("sc_rasp18_preps", "rasp18_id", rasp18_ids))
+
+        rasp7_ids = delete_table_data("sc_rasp7")
+        if rasp7_ids is not None:
+            self.send_request(del_req_by_ids("sc_rasp7_groups", "rasp7_id", rasp7_ids))
+            self.send_request(del_req_by_ids("sc_rasp7_rooms", "rasp7_id", rasp7_ids))
+            self.send_request(del_req_by_ids("sc_rasp7_preps", "rasp7_id", rasp7_ids))
+
+        del_meta_status = f"DELETE FROM parser_meta.status WHERE req_id = {req_id};"
+        del_meta_requests = f"DELETE FROM parser_meta.requests WHERE req_id = {req_id};"
+        self.send_request(del_meta_status)
+        self.send_request(del_meta_requests)
+
+        return {
+            "time_ver": req_time_ver,
+            "Deleted from rasp18": 0 if rasp18_ids is None else len(rasp18_ids),
+            "Deleted from rasp7":  0 if rasp7_ids is None else len(rasp7_ids),
+        }
