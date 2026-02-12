@@ -107,11 +107,11 @@ class Database:
         if prep_id is not None:
             return prep_id
 
-        prep_id = self.get_prev_id(table_name)
         query = f"\
-            INSERT INTO {table_name} (id, fio, chair, degree, photo) \
-            VALUES ({prep_id}, '{fio}', '{chair}', '{degree}', '{photo}') ON CONFLICT DO NOTHING;"
-        self.send_request(query)
+            INSERT INTO {table_name} (fio, chair, degree, photo) \
+            VALUES ('{fio}', '{chair}', '{degree}', '{photo}') \
+            ON CONFLICT DO NOTHING RETURNING id;"
+        prep_id = self.send_request(query, is_return=True)
         return prep_id
 
     def set_group(self, group: str):
@@ -124,11 +124,10 @@ class Database:
         if group_id is not None:
             return group_id
 
-        group_id = self.get_prev_id(table_name)
-        query = f"""INSERT INTO {table_name} (id, title)
-                    VALUES ({group_id}, '{group}')
-                    ON CONFLICT DO NOTHING;"""
-        self.send_request(query)
+        query = f"""INSERT INTO {table_name} (title)
+                    VALUES ('{group}')
+                    ON CONFLICT DO NOTHING RETURNING id;"""
+        group_id = self.send_request(query, is_return=True)
         return group_id
 
     def set_disc(self, title: str, shorttitle: str, department_id: int, varmask: str):
@@ -160,12 +159,11 @@ class Database:
         if disc_id is not None:
             return disc_id
 
-        disc_id = self.get_prev_id(table_name)
         query = f" \
-                INSERT INTO {table_name} (id, title, shorttitle, department_id, varmask) \
-                VALUES ({disc_id}, '{title}', '{shorttitle}', {department_id}, '{varmask}')  \
-                ON CONFLICT DO NOTHING;"
-        self.send_request(query)
+                INSERT INTO {table_name} (title, shorttitle, department_id, varmask) \
+                VALUES ('{title}', '{shorttitle}', {department_id}, '{varmask}')  \
+                ON CONFLICT DO NOTHING RETURNING id;"
+        disc_id = self.send_request(query, is_return=True)
         return disc_id
 
     def set_rasp7(
@@ -177,14 +175,13 @@ class Database:
         pair: int,
         weeksarray: list[int],
         weekstext: str,
-        time_ver: int,
     ) -> int:
         """Заполнение таблицы sc_rasp7"""
         table_name = "sc_rasp7"
 
         query = f" \
-                INSERT INTO {table_name} (semcode, version, disc_id, weekday, pair, weeksarray, weekstext, time_ver) \
-                VALUES ({semcode}, {version}, {disc_id}, {weekday}, {pair}, ARRAY{weeksarray}, '{weekstext}', {time_ver}) \
+                INSERT INTO {table_name} (semcode, version, disc_id, weekday, pair, weeksarray, weekstext) \
+                VALUES ({semcode}, {version}, {disc_id}, {weekday}, {pair}, ARRAY{weeksarray}, '{weekstext}') \
                 ON CONFLICT DO NOTHING RETURNING id;"
         rasp7_id = self.send_request(query, True)
         return rasp7_id

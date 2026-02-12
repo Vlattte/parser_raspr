@@ -10,14 +10,14 @@ SET check_function_bodies = false;
 SET client_min_messages = warning;
 
 --
--- Name: plpgsql; Type: EXTENSION; Schema: -; Owner: 
+-- Name: plpgsql; Type: EXTENSION; Schema: -; Owner:
 --
 
 CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
 
 
 --
--- Name: EXTENSION plpgsql; Type: COMMENT; Schema: -; Owner: 
+-- Name: EXTENSION plpgsql; Type: COMMENT; Schema: -; Owner:
 --
 
 COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
@@ -30,7 +30,7 @@ SET default_tablespace = '';
 SET default_with_oids = false;
 
 --
--- Name: sc_department; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_department; Type: TABLE; Schema: public; Owner: postgres; Tablespace:
 --
 
 CREATE TABLE sc_department (
@@ -70,11 +70,11 @@ ALTER SEQUENCE sc_department_id_seq OWNED BY sc_department.id;
 
 
 --
--- Name: sc_disc; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_disc; Type: TABLE; Schema: public; Owner: postgres; Tablespace:
 --
 
 CREATE TABLE sc_disc (
-    id integer NOT NULL,
+    id serial NOT NULL,
     title text,
     shorttitle text,
     department_id integer,
@@ -92,7 +92,7 @@ COMMENT ON TABLE sc_disc IS 'кафедры';
 
 
 --
--- Name: sc_group; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_group; Type: TABLE; Schema: public; Owner: postgres; Tablespace:
 --
 
 CREATE TABLE sc_group (
@@ -111,7 +111,7 @@ COMMENT ON TABLE sc_group IS 'преподавательский состав';
 
 
 --
--- Name: sc_prep; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_prep; Type: TABLE; Schema: public; Owner: postgres; Tablespace:
 --
 
 CREATE TABLE sc_prep (
@@ -126,7 +126,7 @@ CREATE TABLE sc_prep (
 ALTER TABLE public.sc_prep OWNER TO postgres;
 
 --
--- Name: sc_rasp18; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp18; Type: TABLE; Schema: public; Owner: postgres; Tablespace:
 --
 
 CREATE TABLE sc_rasp18 (
@@ -153,7 +153,7 @@ COMMENT ON TABLE sc_rasp18 IS 'расписание на каждый день (
 
 
 --
--- Name: sc_rasp18_days; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp18_days; Type: TABLE; Schema: public; Owner: postgres; Tablespace:
 --
 
 CREATE TABLE sc_rasp18_days (
@@ -196,7 +196,7 @@ ALTER SEQUENCE sc_rasp18_days_id_seq OWNED BY sc_rasp18_days.id;
 
 
 --
--- Name: sc_rasp18_groups; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp18_groups; Type: TABLE; Schema: public; Owner: postgres; Tablespace:
 --
 
 CREATE TABLE sc_rasp18_groups (
@@ -259,7 +259,7 @@ ALTER SEQUENCE sc_rasp18_id_seq OWNED BY sc_rasp18.id;
 
 
 --
--- Name: sc_rasp18_info; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp18_info; Type: TABLE; Schema: public; Owner: postgres; Tablespace:
 --
 
 CREATE TABLE sc_rasp18_info (
@@ -301,7 +301,7 @@ ALTER SEQUENCE sc_rasp18_info_id_seq OWNED BY sc_rasp18_info.id;
 
 
 --
--- Name: sc_rasp18_move; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp18_move; Type: TABLE; Schema: public; Owner: postgres; Tablespace:
 --
 
 CREATE TABLE sc_rasp18_move (
@@ -344,7 +344,7 @@ ALTER SEQUENCE sc_rasp18_move_id_seq OWNED BY sc_rasp18_move.id;
 
 
 --
--- Name: sc_rasp18_preps; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp18_preps; Type: TABLE; Schema: public; Owner: postgres; Tablespace:
 --
 
 CREATE TABLE sc_rasp18_preps (
@@ -385,7 +385,7 @@ ALTER SEQUENCE sc_rasp18_preps_id_seq OWNED BY sc_rasp18_preps.id;
 
 
 --
--- Name: sc_rasp18_rooms; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp18_rooms; Type: TABLE; Schema: public; Owner: postgres; Tablespace:
 --
 
 CREATE TABLE sc_rasp18_rooms (
@@ -426,7 +426,7 @@ ALTER SEQUENCE sc_rasp18_rooms_id_seq OWNED BY sc_rasp18_rooms.id;
 
 
 --
--- Name: sc_rasp7; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp7; Type: TABLE; Schema: public; Owner: postgres; Tablespace:
 --
 
 CREATE TABLE sc_rasp7 (
@@ -452,7 +452,7 @@ COMMENT ON TABLE sc_rasp7 IS 'расписание на 7 дней (универ
 
 
 --
--- Name: sc_rasp7_groups; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp7_groups; Type: TABLE; Schema: public; Owner: postgres; Tablespace:
 --
 
 CREATE TABLE sc_rasp7_groups (
@@ -515,7 +515,7 @@ ALTER SEQUENCE sc_rasp7_id_seq OWNED BY sc_rasp7.id;
 
 
 --
--- Name: sc_rasp7_preps; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp7_preps; Type: TABLE; Schema: public; Owner: postgres; Tablespace:
 --
 
 CREATE TABLE sc_rasp7_preps (
@@ -556,7 +556,7 @@ ALTER SEQUENCE sc_rasp7_preps_id_seq OWNED BY sc_rasp7_preps.id;
 
 
 --
--- Name: sc_rasp7_rooms; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp7_rooms; Type: TABLE; Schema: public; Owner: postgres; Tablespace:
 --
 
 CREATE TABLE sc_rasp7_rooms (
@@ -611,7 +611,7 @@ CREATE SEQUENCE sc_rasp7_version_seq
 ALTER TABLE public.sc_rasp7_version_seq OWNER TO postgres;
 
 --
--- Name: students; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+-- Name: students; Type: TABLE; Schema: public; Owner: postgres; Tablespace:
 --
 
 CREATE TABLE students (
@@ -968,7 +968,7 @@ SELECT pg_catalog.setval('students_id_seq', 1, false);
 
 
 --
--- Name: sc_department_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_department_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace:
 --
 
 ALTER TABLE ONLY sc_department
@@ -976,7 +976,7 @@ ALTER TABLE ONLY sc_department
 
 
 --
--- Name: sc_disc_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_disc_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace:
 --
 
 ALTER TABLE ONLY sc_disc
@@ -984,7 +984,7 @@ ALTER TABLE ONLY sc_disc
 
 
 --
--- Name: sc_group_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_group_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace:
 --
 
 ALTER TABLE ONLY sc_group
@@ -992,7 +992,7 @@ ALTER TABLE ONLY sc_group
 
 
 --
--- Name: sc_prep_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_prep_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace:
 --
 
 ALTER TABLE ONLY sc_prep
@@ -1000,7 +1000,7 @@ ALTER TABLE ONLY sc_prep
 
 
 --
--- Name: sc_rasp18_days_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp18_days_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace:
 --
 
 ALTER TABLE ONLY sc_rasp18_days
@@ -1008,7 +1008,7 @@ ALTER TABLE ONLY sc_rasp18_days
 
 
 --
--- Name: sc_rasp18_groups_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp18_groups_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace:
 --
 
 ALTER TABLE ONLY sc_rasp18_groups
@@ -1016,7 +1016,7 @@ ALTER TABLE ONLY sc_rasp18_groups
 
 
 --
--- Name: sc_rasp18_info_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp18_info_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace:
 --
 
 ALTER TABLE ONLY sc_rasp18_info
@@ -1024,7 +1024,7 @@ ALTER TABLE ONLY sc_rasp18_info
 
 
 --
--- Name: sc_rasp18_move_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp18_move_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace:
 --
 
 ALTER TABLE ONLY sc_rasp18_move
@@ -1032,7 +1032,7 @@ ALTER TABLE ONLY sc_rasp18_move
 
 
 --
--- Name: sc_rasp18_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp18_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace:
 --
 
 ALTER TABLE ONLY sc_rasp18
@@ -1040,7 +1040,7 @@ ALTER TABLE ONLY sc_rasp18
 
 
 --
--- Name: sc_rasp18_preps_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp18_preps_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace:
 --
 
 ALTER TABLE ONLY sc_rasp18_preps
@@ -1048,7 +1048,7 @@ ALTER TABLE ONLY sc_rasp18_preps
 
 
 --
--- Name: sc_rasp18_rooms_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp18_rooms_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace:
 --
 
 ALTER TABLE ONLY sc_rasp18_rooms
@@ -1056,7 +1056,7 @@ ALTER TABLE ONLY sc_rasp18_rooms
 
 
 --
--- Name: sc_rasp7_groups_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp7_groups_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace:
 --
 
 ALTER TABLE ONLY sc_rasp7_groups
@@ -1064,7 +1064,7 @@ ALTER TABLE ONLY sc_rasp7_groups
 
 
 --
--- Name: sc_rasp7_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp7_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace:
 --
 
 ALTER TABLE ONLY sc_rasp7
@@ -1072,7 +1072,7 @@ ALTER TABLE ONLY sc_rasp7
 
 
 --
--- Name: sc_rasp7_preps_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp7_preps_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace:
 --
 
 ALTER TABLE ONLY sc_rasp7_preps
@@ -1080,7 +1080,7 @@ ALTER TABLE ONLY sc_rasp7_preps
 
 
 --
--- Name: sc_rasp7_rooms_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+-- Name: sc_rasp7_rooms_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace:
 --
 
 ALTER TABLE ONLY sc_rasp7_rooms
@@ -1088,7 +1088,7 @@ ALTER TABLE ONLY sc_rasp7_rooms
 
 
 --
--- Name: students_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace: 
+-- Name: students_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres; Tablespace:
 --
 
 ALTER TABLE ONLY students

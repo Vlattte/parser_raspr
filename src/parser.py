@@ -745,8 +745,7 @@ class VegaRaspParser:
             weekday=weekday_num,
             pair=order,
             weeksarray=lesson_parts.weeks_list,
-            weekstext=lesson_parts.weeks_text,
-            time_ver=self.req_time
+            weekstext=lesson_parts.weeks_text
         )
 
         # таблица связи пары и группы
