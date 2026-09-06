@@ -112,6 +112,9 @@ class Database:
             VALUES ('{fio}', '{chair}', '{degree}', '{photo}') \
             ON CONFLICT DO NOTHING RETURNING id;"
         prep_id = self.send_request(query, is_return=True)
+        if prep_id is None:
+            raise ValueError(f"Ошибка при получении id для таблицы {table_name} для \
+                             [{fio=}, '{chair=}', {degree=}, {photo=}]")
         return prep_id
 
     def set_group(self, group: str):
@@ -128,6 +131,9 @@ class Database:
                     VALUES ('{group}')
                     ON CONFLICT DO NOTHING RETURNING id;"""
         group_id = self.send_request(query, is_return=True)
+
+        if group_id is None:
+            raise ValueError(f"Ошибка при получении id группы для группы [{group}]")
         return group_id
 
     def set_disc(self, title: str, shorttitle: str, department_id: int, varmask: str):
@@ -142,10 +148,8 @@ class Database:
         """
         table_name = "sc_disc"
         if title is None and shorttitle is None or department_id == -1:
-            print(
-                f"""ОШИБКА при записи дисциплины: title: {title},
-                    shorttitle: {shorttitle}, department_id: {department_id}"""
-            )
+            print(f"""ОШИБКА при записи дисциплины: title: {title},
+                    shorttitle: {shorttitle}, department_id: {department_id}""")
 
         # вторая такая же дисциплина может быть, только если у них не совпадает department_id
         # поэтому проверяем на повтор
@@ -164,6 +168,10 @@ class Database:
                 VALUES ('{title}', '{shorttitle}', {department_id}, '{varmask}')  \
                 ON CONFLICT DO NOTHING RETURNING id;"
         disc_id = self.send_request(query, is_return=True)
+        if disc_id is None:
+            raise ValueError(
+                f"Ошибка при получении id дисциплины по следующим параметрам: [{params}]"
+            )
         return disc_id
 
     def set_rasp7(
@@ -184,6 +192,12 @@ class Database:
                 VALUES ({semcode}, {version}, {disc_id}, {weekday}, {pair}, ARRAY{weeksarray}, '{weekstext}') \
                 ON CONFLICT DO NOTHING RETURNING id;"
         rasp7_id = self.send_request(query, True)
+        if rasp7_id is None:
+            raise ValueError(
+                f"Ошибка при получении id расписания на неделю для следующих параметров: \
+                              [{semcode=}, {version=}, {disc_id=}, {weekday}, \
+                                {pair=}, ARRAY{weeksarray=}, '{weekstext=}']"
+            )
         return rasp7_id
 
     def set_rasp7_groups(self, rasp7_id: int, group_id: int, sub_group: int):
@@ -200,6 +214,9 @@ class Database:
                 VALUES ({rasp7_id}, {group_id}, {sub_group}) \
                 ON CONFLICT DO NOTHING RETURNING id;"
         rasp7_groups_id = self.send_request(query, True)
+        if rasp7_groups_id is None:
+            raise ValueError(f"Ошибка при получении id для таблицы sc_rasp7_groups для \
+                             [{rasp7_id=}, {group_id=}, {sub_group=}]")
         return rasp7_groups_id
 
     def set_rasp7_preps(self, rasp7_id: int, prep_id: int):
@@ -212,6 +229,9 @@ class Database:
                 INSERT INTO {table_name} (rasp7_id, prep_id) \
                 VALUES ({rasp7_id}, {prep_id}) ON CONFLICT DO NOTHING RETURNING id;"
         rasp7_preps_id = self.send_request(query, True)
+        if rasp7_preps_id is None:
+            raise ValueError(f"Ошибка при получении id для таблицы sc_rasp7_preps для \
+                                     [{rasp7_id=}, {prep_id=}]")
         return rasp7_preps_id
 
     def set_rasp7_rooms(self, rasp7_id: int, room: str):
@@ -222,6 +242,9 @@ class Database:
                 INSERT INTO {table_name} (rasp7_id, room) \
                 VALUES ({rasp7_id}, '{room}') ON CONFLICT DO NOTHING RETURNING id;"
         rasp7_rooms_id = self.send_request(query, True)
+        if rasp7_rooms_id is None:
+            raise ValueError(f"Ошибка при получении id для таблицы sc_rasp7_rooms для \
+                             [{rasp7_id=}, {room=}]")
         return rasp7_rooms_id
 
     def clear_rasp_data_between_weeks(
@@ -317,6 +340,11 @@ class Database:
         AND date('{end_date}') >= day"
 
         written_days_n = self.send_request(query, is_return=True)
+        if written_days_n is None:
+            raise ValueError(
+                f"Ошибка при получении количества заполненных дат за период \
+                                [{start_date}, {end_date}]"
+            )
         return True if written_days_n > 0 else False
 
     def set_rasp18_days(self, semcode: int, day: str, weekday: int, week: int):
@@ -334,6 +362,9 @@ class Database:
                 VALUES ({semcode}, date('{day}'), {weekday}, {week})  \
                 ON CONFLICT DO NOTHING RETURNING id;"
         rasp18_days_id = self.send_request(query, True)
+        if rasp18_days_id is None:
+            raise ValueError(f"Ошибка при получении id для таблицы sc_rasp18_days для \
+                             [{semcode=}, date('{day=}'), {weekday=}, {week=}]")
 
         return rasp18_days_id
 
@@ -384,6 +415,11 @@ class Database:
                 '{timestart_hm}', '{timeend_hm}', {data.time_ver}) \
                 ON CONFLICT DO NOTHING RETURNING id;"
         rasp18_id = self.send_request(query, True)
+        if rasp18_id is None:
+            raise ValueError(f"Ошибка при получении id для таблицы sc_rasp18 для \
+                             [{data.semcode=}, {data.day_id=}, {data.pair=}, \
+                {pair_kind=}, {data.worktype=}, {data.disc_id=}, \
+                '{timestart_hm=}', '{timeend_hm=}', {data.time_ver=}]")
         return rasp18_id
 
     def set_rasp18_groups(self, rasp18_id: int, group_id: int, subgroup: int):
@@ -402,6 +438,11 @@ class Database:
                 ON CONFLICT DO NOTHING RETURNING id;"
 
         rasp18_groups_id = self.send_request(query, True)
+        if rasp18_groups_id is None:
+            raise ValueError(
+                f"Ошибка при получении id для таблицы sc_rasp18_groups для \
+                             [{rasp18_id=}, '{group_id=}', {subgroup=}]"
+            )
         return rasp18_groups_id
 
     def set_rasp18_preps(self, rasp18_id: int, prep_id: int):
@@ -421,6 +462,9 @@ class Database:
                 VALUES ({rasp18_id}, {prep_id})  \
                 ON CONFLICT DO NOTHING RETURNING id;"
         rasp18_preps_id = self.send_request(query, True)
+        if rasp18_preps_id is None:
+            raise ValueError(f"Ошибка при получении id для таблицы {table_name} для \
+                        [{rasp18_id=}, '{prep_id=}']")
         return rasp18_preps_id
 
     def set_rasp18_rooms(self, rasp18_id: int, room: str):
@@ -437,6 +481,11 @@ class Database:
                 VALUES ({rasp18_id}, '{room}')  \
                 ON CONFLICT DO NOTHING RETURNING id;"
         rasp18_rooms_id = self.send_request(query, True)
+        if rasp18_rooms_id is None:
+            raise ValueError(
+                f"Ошибка при получении id для таблицы sc_rasp18_groups для \
+                             [{rasp18_id=}, '{room=}']"
+            )
         return rasp18_rooms_id
 
     # --------------------
@@ -490,6 +539,8 @@ class Database:
         table_name = "sc_rasp18_days"
         query = f"SELECT week FROM {table_name} WHERE day = '{date}';"
         week = self.send_request(query=query, is_return=True)
+        if week is None:
+            raise ValueError(f"Ошибка при получении недели по дате для [{date=}]")
         return week
 
     def fill_departments(self):
@@ -520,8 +571,8 @@ class Database:
         table_name = "sc_worktypes"
 
         # проверка на наличие такой таблицы
-        create_query = f"""CREATE TABLE IF NOT EXISTS public.{
-        table_name} (id SERIAL PRIMARY KEY, title text);"""
+        create_query = f"""CREATE TABLE IF NOT EXISTS public.{table_name} \
+              (id SERIAL PRIMARY KEY, title text);"""
         self.send_request(create_query)
 
         query = ""
@@ -541,6 +592,10 @@ class Database:
         SELECT week FROM sc_rasp18_days WHERE day = date('{day}') AND semcode = {semcode};
         """
         week = self.send_request(query=query, is_return=True)
+        if week is None:
+            raise ValueError(
+                f"Ошибка при получении номера недели для дня: [{day}] и семкода [{semcode}]"
+            )
         return week
 
     def get_dates(self, semcode: int):
@@ -767,9 +822,15 @@ class Database:
 
         rasp18_ids = delete_table_data("sc_rasp18")
         if rasp18_ids is not None:
-            self.send_request(del_req_by_ids("sc_rasp18_groups", "rasp18_id", rasp18_ids))
-            self.send_request(del_req_by_ids("sc_rasp18_rooms", "rasp18_id", rasp18_ids))
-            self.send_request(del_req_by_ids("sc_rasp18_preps", "rasp18_id", rasp18_ids))
+            self.send_request(
+                del_req_by_ids("sc_rasp18_groups", "rasp18_id", rasp18_ids)
+            )
+            self.send_request(
+                del_req_by_ids("sc_rasp18_rooms", "rasp18_id", rasp18_ids)
+            )
+            self.send_request(
+                del_req_by_ids("sc_rasp18_preps", "rasp18_id", rasp18_ids)
+            )
 
         rasp7_ids = delete_table_data("sc_rasp7")
         if rasp7_ids is not None:
@@ -785,5 +846,5 @@ class Database:
         return {
             "time_ver": req_time_ver,
             "Deleted from rasp18": 0 if rasp18_ids is None else len(rasp18_ids),
-            "Deleted from rasp7":  0 if rasp7_ids is None else len(rasp7_ids),
+            "Deleted from rasp7": 0 if rasp7_ids is None else len(rasp7_ids),
         }

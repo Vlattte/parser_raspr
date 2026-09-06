@@ -903,4 +903,6 @@ class VegaRaspParser:
 
         dep_params = {"title": department_name}
         department_id = self.db.get_id("sc_department", dep_params)
+        if department_id is None:
+            raise ValueError(f"Ошибка при получении id кафедры для [{department_name}]")
         return department_id
