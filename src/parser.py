@@ -442,7 +442,7 @@ class VegaRaspParser:
                         lesson_parts.weeks_list = week_parts.weeks_list
                         lesson_parts.weeks_text = week_parts.weeks_text
 
-                    lesson_count = utils.get_lesson_count_str(
+                    lesson_count = time_utils.get_lesson_count_str(
                         lesson_parts.timestart, lesson_parts.timeend
                     )
 

@@ -163,11 +163,13 @@ class Database:
         if disc_id is not None:
             return disc_id
 
+        disc_id = self.get_prev_id(table_name)
         query = f" \
-                INSERT INTO {table_name} (title, shorttitle, department_id, varmask) \
-                VALUES ('{title}', '{shorttitle}', {department_id}, '{varmask}')  \
-                ON CONFLICT DO NOTHING RETURNING id;"
-        disc_id = self.send_request(query, is_return=True)
+                INSERT INTO {table_name} (id, title, shorttitle, department_id, varmask) \
+                VALUES ({disc_id}, '{title}', '{shorttitle}', {department_id}, '{varmask}')  \
+                ON CONFLICT DO NOTHING;"
+        self.send_request(query)
+
         if disc_id is None:
             raise ValueError(
                 f"Ошибка при получении id дисциплины по следующим параметрам: [{params}]"
