@@ -107,11 +107,11 @@ class Database:
         if prep_id is not None:
             return prep_id
 
+        prep_id = self.get_prev_id(table_name)
         query = f"\
-            INSERT INTO {table_name} (fio, chair, degree, photo) \
-            VALUES ('{fio}', '{chair}', '{degree}', '{photo}') \
-            ON CONFLICT DO NOTHING RETURNING id;"
-        prep_id = self.send_request(query, is_return=True)
+            INSERT INTO {table_name} (id, fio, chair, degree, photo) \
+            VALUES ({prep_id}, '{fio}', '{chair}', '{degree}', '{photo}') ON CONFLICT DO NOTHING;"
+        self.send_request(query)
         if prep_id is None:
             raise ValueError(f"Ошибка при получении id для таблицы {table_name} для \
                              [{fio=}, '{chair=}', {degree=}, {photo=}]")
@@ -127,10 +127,11 @@ class Database:
         if group_id is not None:
             return group_id
 
-        query = f"""INSERT INTO {table_name} (title)
-                    VALUES ('{group}')
-                    ON CONFLICT DO NOTHING RETURNING id;"""
-        group_id = self.send_request(query, is_return=True)
+        group_id = self.get_prev_id(table_name)
+        query = f"""INSERT INTO {table_name} (id, title)
+                    VALUES ({group_id}, '{group}')
+                    ON CONFLICT DO NOTHING;"""
+        self.send_request(query)
 
         if group_id is None:
             raise ValueError(f"Ошибка при получении id группы для группы [{group}]")
