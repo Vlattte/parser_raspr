@@ -234,11 +234,12 @@ class VegaRaspParser:
         while True:
             reqs_before = self.db.get_reqs_before(self.req_id)
             if not reqs_before:
-                print(
-                    f"\nЗапуск заявки [{self.req_id}] в промежутке \
-                        [{self.start_date}, {self.end_date}]!\n"
-                )
+                print(f"\nЗапуск заявки [{self.req_id}] в промежутке \
+                        [{self.start_date}, {self.end_date}]!\n")
                 return
+            print(
+                "Ожидаю завершения остальных заявок (если их не должно быть вызовите `python clear_reqs.py`)"
+            )
             sleep(2)
 
     def log_cmd_message(self, msg: str):
@@ -299,9 +300,7 @@ class VegaRaspParser:
         percent_step = 100 / group_count
 
         # ---------------Инициализируем статус парсинга в мета таблице-----------
-        self.db.update_req_status(
-            req_id=self.req_id, new_status=ReqStatus.PARSING
-        )
+        self.db.update_req_status(req_id=self.req_id, new_status=ReqStatus.PARSING)
 
         # ---------------Парсим расписание в цикле по группам--------------------
         merged_cells = ws.merged_cells
@@ -738,6 +737,8 @@ class VegaRaspParser:
         # таблица расписания
         week_strs = ListData.WEEK_STRS.value
         weekday_num = week_strs.index(weekday)
+        if disc_id is None:
+            print("FOUND")
         rasp7_id = self.db.set_rasp7(
             semcode=self.semcode,
             version=self.version,
@@ -745,7 +746,7 @@ class VegaRaspParser:
             weekday=weekday_num,
             pair=order,
             weeksarray=lesson_parts.weeks_list,
-            weekstext=lesson_parts.weeks_text
+            weekstext=lesson_parts.weeks_text,
         )
 
         # таблица связи пары и группы

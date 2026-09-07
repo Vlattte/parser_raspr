@@ -132,9 +132,9 @@ class ReqStatus(str, Enum):
 class Rasp18Data:
     """Данные для заполнения таблиц, зависимых от rasp18 и ее саму"""
     semcode:    int = -1
-    day_id:     int = -1
-    pair:       int = -1
-    worktype:   int = -1
+    day_id:     int = -1    # id из таблицы sc_rasp18_days
+    pair:       int = -1    # номер пары
+    worktype:   int = -1    # вид занятия (таблица sc_worktypes)
     disc_id:    int = -1
     timestart:  str = ""
     timeend:    str = ""

@@ -84,13 +84,14 @@ class Database:
 
     def clear_tables(self):
         """ОЧИЩАЕТ ВСЕ ТАБЛИЦЫ"""
-        print("<--TABLES CLEARED-->")
+        print("<--TABLES CLEARING-->")
         with open(
             "sql_scripts/clear_script.sql", "r", encoding="utf-8"
         ) as clear_script:
             query = clear_script.read()
             query = query.replace("\n", "")
             self.send_request(query)
+        print("<--TABLES CLEARED-->")
 
     def set_prep(
         self, fio: str, chair: str = None, degree: str = None, photo: str = None
@@ -142,10 +143,8 @@ class Database:
         """
         table_name = "sc_disc"
         if title is None and shorttitle is None or department_id == -1:
-            print(
-                f"""ОШИБКА при записи дисциплины: title: {title},
-                    shorttitle: {shorttitle}, department_id: {department_id}"""
-            )
+            print(f"""ОШИБКА при записи дисциплины: title: {title},
+                    shorttitle: {shorttitle}, department_id: {department_id}""")
 
         # вторая такая же дисциплина может быть, только если у них не совпадает department_id
         # поэтому проверяем на повтор
@@ -343,6 +342,7 @@ class Database:
         worktype integer -– 0пр,1лк,2лб,
             -- 11экз,12зач,13зач-д,
             -- 14кр,15кп
+            -- 20пересдача
         """
         # у одной и той же группы у такой же подгруппы не может
         # быть две пары одновременно
@@ -356,7 +356,7 @@ class Database:
         timestart_hm = re.sub(hm_format, r"\1", data.timestart)
         timeend_hm = re.sub(hm_format, r"\1", data.timeend)
 
-        # 0 обычное,1 перенос,2 повтор
+        # 0 обычное, 1 перенос, 2 повтор
         pair_kind = 0
 
         if data.prep_id is not None and data.room is not None:
@@ -506,6 +506,7 @@ class Database:
         # - 0-пр, 1-лк, 2-лб
         # - 10-конс, 11-экз, 12-зaч, 13-зaч-д
         # - 14-кр, 15-кп
+        # - 20-пересдача
         worktypes = {
             "пр": 0,
             "лк": 1,
@@ -516,6 +517,7 @@ class Database:
             "зач-д": 13,
             "кр": 14,
             "кп": 15,
+            "пересдача": 20,
         }
         table_name = "sc_worktypes"
 
@@ -767,9 +769,15 @@ class Database:
 
         rasp18_ids = delete_table_data("sc_rasp18")
         if rasp18_ids is not None:
-            self.send_request(del_req_by_ids("sc_rasp18_groups", "rasp18_id", rasp18_ids))
-            self.send_request(del_req_by_ids("sc_rasp18_rooms", "rasp18_id", rasp18_ids))
-            self.send_request(del_req_by_ids("sc_rasp18_preps", "rasp18_id", rasp18_ids))
+            self.send_request(
+                del_req_by_ids("sc_rasp18_groups", "rasp18_id", rasp18_ids)
+            )
+            self.send_request(
+                del_req_by_ids("sc_rasp18_rooms", "rasp18_id", rasp18_ids)
+            )
+            self.send_request(
+                del_req_by_ids("sc_rasp18_preps", "rasp18_id", rasp18_ids)
+            )
 
         rasp7_ids = delete_table_data("sc_rasp7")
         if rasp7_ids is not None:
@@ -785,5 +793,5 @@ class Database:
         return {
             "time_ver": req_time_ver,
             "Deleted from rasp18": 0 if rasp18_ids is None else len(rasp18_ids),
-            "Deleted from rasp7":  0 if rasp7_ids is None else len(rasp7_ids),
+            "Deleted from rasp7": 0 if rasp7_ids is None else len(rasp7_ids),
         }
