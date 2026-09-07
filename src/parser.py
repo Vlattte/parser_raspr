@@ -441,7 +441,7 @@ class VegaRaspParser:
                         lesson_parts.weeks_list = week_parts.weeks_list
                         lesson_parts.weeks_text = week_parts.weeks_text
 
-                    lesson_count = utils.get_lesson_count_str(
+                    lesson_count = time_utils.get_lesson_count_str(
                         lesson_parts.timestart, lesson_parts.timeend
                     )
 
@@ -904,4 +904,6 @@ class VegaRaspParser:
 
         dep_params = {"title": department_name}
         department_id = self.db.get_id("sc_department", dep_params)
+        if department_id is None:
+            raise ValueError(f"Ошибка при получении id кафедры для [{department_name}]")
         return department_id
