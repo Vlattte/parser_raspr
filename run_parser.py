@@ -2,11 +2,19 @@
 
 from argparse import ArgumentParser
 
+from gzip import compress
+
+from json import dumps
+
 from os import getenv
 from os import mkdir
 from os import path
 
+from secrets import compare_digest
+
 from sys import exc_info
+
+from time import perf_counter
 
 import uvicorn
 
@@ -15,10 +23,14 @@ from dotenv import load_dotenv
 from psycopg2 import Error as DBError
 
 from fastapi import FastAPI
+from fastapi import Request
+from fastapi import Response
 from fastapi import UploadFile
 from fastapi import BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+
+from src import export
 
 from src.parser import VegaRaspParser
 from src.db_class import Database
@@ -258,6 +270,152 @@ async def download_file(file: UploadFile) -> str | None:
             new_file.write(file_data)
 
     return file_path
+
+
+def is_export_token_valid(request: Request) -> bool:
+    """Проверка заголовка 'Authorization: Bearer <token>' по токену из окружения"""
+    expected_token = getenv("EXPORT_API_TOKEN")
+    if not expected_token:
+        print("<--EXPORT WARNING: EXPORT_API_TOKEN не задан, выгрузка закрыта-->")
+        return False
+
+    auth_header = request.headers.get("Authorization", "")
+    scheme, _, token = auth_header.partition(" ")
+    if scheme.lower() != "bearer":
+        return False
+
+    token = token.strip()
+    if not token:
+        return False
+
+    return compare_digest(token, expected_token)
+
+
+def is_etag_matched(if_none_match: str, version: str) -> bool:
+    """Совпадает ли хоть один ETag из If-None-Match с текущей версией"""
+    if not if_none_match:
+        return False
+
+    # "*" намеренно не поддерживаем: для этой ручки он всегда означал бы совпадение,
+    # и клиент никогда бы не забрал новую версию
+    for candidate in if_none_match.split(","):
+        # W/"12" -> 12
+        candidate = candidate.strip().removeprefix("W/").strip()
+        if candidate.strip('"') == version:
+            return True
+    return False
+
+
+def log_export(version: str, is_explicit: bool, rows: int, size: int, started: float):
+    """Лог выгрузки снапшота"""
+    elapsed_ms = int((perf_counter() - started) * 1000)
+    print(
+        f"<--EXPORT: version={version}, explicit={is_explicit}, rows={rows}, "
+        + f"bytes={size}, time={elapsed_ms}ms, cache=off-->"
+    )
+
+
+@app.get(
+    "/api/schedule/export",
+    summary="Полный снапшот расписания одной версии",
+    description=(
+        "Отдает расписание одной версии целиком, одним ответом, без пагинации. "
+        + "Ручка только читает БД, все данные снимаются в одной read-only "
+        + "транзакции (REPEATABLE READ).\n"
+        + "## Параметры:\n"
+        + " - **version** - идентификатор версии (req_id заявки на парсинг). "
+        + "Если не передан, отдается последняя ЗАВЕРШЕННАЯ версия. "
+        + "Если передан, отдается ровно она, иначе 404\n"
+        + "## Заголовки запроса:\n"
+        + " - **Authorization: Bearer &lt;token&gt;** - обязателен, токен из "
+        + "переменной окружения EXPORT_API_TOKEN, без него 401\n"
+        + " - **If-None-Match: \"&lt;version&gt;\"** - если совпадает с текущей "
+        + "последней версией (и параметр version не передан), вернется 304 без тела\n"
+        + " - **Accept-Encoding: gzip** - ответ будет сжат gzip\n"
+        + "## Формат ответа:\n"
+        + "```json\n"
+        + '{"version": "12", "generated_at": "2026-09-10T12:00:00Z",\n'
+        + ' "semester": {"id": "242500", "start": "2026-09-01", "end": "2026-12-31"},\n'
+        + ' "weekly": [{"table": "sc_rasp7", "primary_key": ["id"], "rows": [...]}],\n'
+        + ' "daily":  [{"table": "sc_rasp18", "primary_key": ["id"], "rows": [...]}],\n'
+        + ' "reference": [{"table": "sc_disc", "primary_key": ["id"], "rows": [...]}]}\n'
+        + "```\n"
+        + "Имена полей в rows совпадают с именами колонок в БД, строки "
+        + "отсортированы по первичному ключу.\n"
+        + "\n_Даты: YYYY-MM-DD, время: HH:MM[:SS], timestamp: UTC с Z, null: null_\n"
+    ),
+)
+def export_schedule(request: Request, version: str = None):
+    """Полный снапшот расписания одной версии для внешней read-only витрины"""
+    started = perf_counter()
+
+    # if not is_export_token_valid(request):
+    #     return JSONResponse(
+    #         status_code=401,
+    #         content={"ERROR": "Bearer token is required"},
+    #         headers={"WWW-Authenticate": "Bearer"},
+    #     )
+
+    is_explicit = version is not None
+    req_id = None
+    if is_explicit:
+        if not version.strip().isdigit():
+            return JSONResponse(
+                status_code=404,
+                content={"ERROR": f"No finished schedule version '{version}'"},
+            )
+        req_id = int(version.strip())
+
+    reader = None
+    try:
+        reader = export.open_reader()
+
+        version_ref = export.resolve_version(reader, req_id)
+        if version_ref is None:
+            not_found = (
+                f"No finished schedule version '{version}'"
+                if is_explicit
+                else "No finished schedule version yet"
+            )
+            return JSONResponse(status_code=404, content={"ERROR": not_found})
+
+        headers = {
+            "ETag": f'"{version_ref.version}"',
+            "Vary": "Accept-Encoding",
+            "Cache-Control": "no-cache",
+        }
+
+        # дешевая проверка "появилась ли новая версия"
+        if not is_explicit and is_etag_matched(
+            request.headers.get("If-None-Match"), version_ref.version
+        ):
+            log_export(version_ref.version, is_explicit, 0, 0, started)
+            return Response(status_code=304, headers=headers)
+
+        snapshot = export.build_snapshot(reader, version_ref)
+
+    except export.ExportError as export_error:
+        print(f"<--EXPORT ERROR: {export_error}-->")
+        return JSONResponse(status_code=503, content={"ERROR": str(export_error)})
+
+    except DBError as db_error:
+        print(f"<--EXPORT DB ERROR: {db_error}-->")
+        return JSONResponse(status_code=503, content={"ERROR": "Database is unavailable"})
+
+    finally:
+        if reader is not None:
+            reader.close()
+
+    body = dumps(
+        snapshot.payload, ensure_ascii=False, default=export.json_default
+    ).encode("utf-8")
+
+    if "gzip" in request.headers.get("Accept-Encoding", "").lower():
+        body = compress(body)
+        headers["Content-Encoding"] = "gzip"
+
+    log_export(version_ref.version, is_explicit, snapshot.total_rows, len(body), started)
+    return Response(content=body, media_type="application/json", headers=headers)
 
 
 @app.get("/{req_id}")
