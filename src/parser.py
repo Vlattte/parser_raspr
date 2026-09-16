@@ -49,6 +49,30 @@ WINTER_SUBSTR = "зимн"
 SUMMER_SUBSTR = "летн"
 
 
+def get_version_from_file(file_path: str) -> str | None:
+    """Версия расписания из главного заголовка файла.
+    None, если файла нет или версия не найдена"""
+    if not file_path or not path.isfile(file_path):
+        return None
+
+    try:
+        ws = load_workbook(filename=file_path).active
+    except Exception as error:
+        print(f"Не удалось прочитать файл {file_path}: {error}")
+        return None
+
+    # версия в 1-й колонке (расписание семестра) или во 2-й (сессия)
+    for col in (1, 2):
+        for row in range(1, ws.max_row + 1):
+            title = ws.cell(row, col).value
+            if isinstance(title, str) and "версия" in title:
+                try:
+                    return str_utils.get_version(title)
+                except (ValueError, IndexError):
+                    return None
+    return None
+
+
 class VegaRaspParser:
     """Парсер excel расписания"""
 
@@ -238,7 +262,7 @@ class VegaRaspParser:
                         [{self.start_date}, {self.end_date}]!\n")
                 return
             print(
-                "Ожидаю завершения остальных заявок (если их не должно быть вызовите `python clear_reqs.py`)"
+                "Ожидаю завершения остальных заявок (если их не должно быть вызовите `python help_scripts/clear_reqs.py`)"
             )
             sleep(2)
 

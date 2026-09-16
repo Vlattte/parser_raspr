@@ -2,6 +2,8 @@
 
 from argparse import ArgumentParser
 
+from datetime import datetime
+
 from gzip import compress
 
 from json import dumps
@@ -33,11 +35,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from src import export
 
 from src.parser import VegaRaspParser
+from src.parser import get_version_from_file
 from src.db_class import Database
 
 from src.structs import CmdParams
 from src.structs import RaspType
 from src.structs import ReqStatus
+
+from src.utils.time_utils import get_current_semcode
+from src.utils.time_utils import semcode_for_date
 
 load_dotenv()
 root_path = getenv("DOMEN_ROOT_PATH") if not None else "rasp_parse"
@@ -218,6 +224,24 @@ async def parse_file(
     background_tasks: BackgroundTasks | None,
 ) -> JSONResponse:
     """Парсит файл по переданным параметрам в фоне"""
+    # парсинг разрешен только после добавления дат семестра (POST /days)
+    semcode = get_current_semcode()
+    db = Database()
+    db.set_conn()
+    days_filled = db.is_days_period_filled(semcode, start_date, end_date)
+    db.close_conn()
+
+    if not days_filled:
+        return JSONResponse(
+            content={
+                "ERROR": (
+                    f"Даты семестра [{start_date} - {end_date}] еще не добавлены. "
+                    + "Сначала отправьте запрос на эндпоинт POST /days"
+                )
+            },
+            status_code=400,
+        )
+
     cmd_params = CmdParams()
     cmd_params.is_sem = True if rasp_type == RaspType.SEMESTR else False
     cmd_params.start_date = start_date
@@ -329,7 +353,7 @@ def log_export(version: str, is_explicit: bool, rows: int, size: int, started: f
         + "## Заголовки запроса:\n"
         + " - **Authorization: Bearer &lt;token&gt;** - обязателен, токен из "
         + "переменной окружения EXPORT_API_TOKEN, без него 401\n"
-        + " - **If-None-Match: \"&lt;version&gt;\"** - если совпадает с текущей "
+        + ' - **If-None-Match: "&lt;version&gt;"** - если совпадает с текущей '
         + "последней версией (и параметр version не передан), вернется 304 без тела\n"
         + " - **Accept-Encoding: gzip** - ответ будет сжат gzip\n"
         + "## Формат ответа:\n"
@@ -400,7 +424,9 @@ def export_schedule(request: Request, version: str = None):
 
     except DBError as db_error:
         print(f"<--EXPORT DB ERROR: {db_error}-->")
-        return JSONResponse(status_code=503, content={"ERROR": "Database is unavailable"})
+        return JSONResponse(
+            status_code=503, content={"ERROR": "Database is unavailable"}
+        )
 
     finally:
         if reader is not None:
@@ -414,8 +440,112 @@ def export_schedule(request: Request, version: str = None):
         body = compress(body)
         headers["Content-Encoding"] = "gzip"
 
-    log_export(version_ref.version, is_explicit, snapshot.total_rows, len(body), started)
+    log_export(
+        version_ref.version, is_explicit, snapshot.total_rows, len(body), started
+    )
     return Response(content=body, media_type="application/json", headers=headers)
+
+
+def parse_date_str(date_str: str) -> datetime | None:
+    """Парсинг строки в дате в формате YYYY-MM-DD, None если не удалось"""
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return None
+
+
+@app.post(
+    "/days",
+    summary="Добавить даты семестра",
+    description=(
+        "Заполняет таблицу sc_rasp18_days днями периода [start_date, end_date] "
+        + "для текущего семестра. Без этих дат парсинг файлов недоступен "
+        + "(эндпоинты /sem и /exam вернут 400)\n"
+        + "## Обязательные параметры:\n"
+        + " - **start_date** - дата начала семестра\n"
+        + " - **end_date** - дата окончания семестра\n"
+        + "\n_Даты писать в строковом виде в формате YYYY-MM-DD (год-месяц-день)_\n"
+        + "\n_Все даты включительно [start_date, end_date]_\n"
+        + "\nЕсли период уже заполнен, данные не дублируются"
+    ),
+)
+async def set_semester_days(start_date: str, end_date: str) -> JSONResponse:
+    """Добавить даты семестра в sc_rasp18_days"""
+    start_dt = parse_date_str(start_date)
+    end_dt = parse_date_str(end_date)
+    if start_dt is None or end_dt is None:
+        return JSONResponse(
+            content={"ERROR": "Даты должны быть в формате YYYY-MM-DD"},
+            status_code=400,
+        )
+    if start_dt > end_dt:
+        return JSONResponse(
+            content={"ERROR": "Дата начала позже даты окончания"},
+            status_code=400,
+        )
+
+    semcode = get_current_semcode()
+
+    db = Database()
+    db.set_conn()
+    try:
+        already_filled = db.is_days_period_filled(semcode, start_date, end_date)
+        if not already_filled:
+            db.fill_rasp18_for_period(semcode, start_date, end_date)
+    except DBError as db_error:
+        print(f"DBException triggered: {db_error}")
+        return JSONResponse(
+            content={"ERROR": "Database is unavailable"}, status_code=500
+        )
+    finally:
+        db.close_conn()
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "semcode": semcode,
+            "start_date": start_date,
+            "end_date": end_date,
+            "already_filled": already_filled,
+        },
+    )
+
+
+@app.get(
+    "/days",
+    summary="Получить даты семестра",
+    description=(
+        "Возвращает сохраненные даты текущего семестра "
+        + "(из таблицы sc_rasp18_days). "
+        + "Если даты еще не добавлены, вернет 404"
+    ),
+)
+async def get_semester_days() -> JSONResponse:
+    """Получить даты начала и конца текущего семестра"""
+    semcode = get_current_semcode()
+
+    db = Database()
+    db.set_conn()
+    try:
+        start_date, end_date = db.get_dates(semcode)
+    except RuntimeError:
+        return JSONResponse(
+            content={
+                "ERROR": f"Даты для семкода {semcode} еще не добавлены (POST /days)"
+            },
+            status_code=404,
+        )
+    finally:
+        db.close_conn()
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "semcode": semcode,
+            "start_date": start_date,
+            "end_date": end_date,
+        },
+    )
 
 
 @app.get("/{req_id}")
@@ -469,26 +599,40 @@ async def get_req_statuses() -> JSONResponse:
 
     statuses = db.get_meta_statuses()
     if statuses is None:
-        return JSONResponse(
-            content={"WARNING": "No requests yet"},
-            status_code=400,
-        )
+        # заявок еще нет - это не ошибка, отдаем пустой список
+        return JSONResponse(content={}, status_code=200)
 
     db.close_conn()
     return JSONResponse(status_code=200, content=statuses)
 
 
 @app.delete("/{req_id}")
-async def delete_request_data(req_id: int) -> JSONResponse:
-    """Удалить данные по заявке"""
+async def delete_request_data(req_id: int):
+    """Удалить заявку и все данные по ней"""
     status_code = 200
     try:
         db = Database()
         db.set_conn()
 
-        del_result = db.clear_req_data(req_id)
+        req_data = db.get_req_data(req_id)
+        if isinstance(req_data, dict):
+            return JSONResponse(content=req_data, status_code=400)
+
+        file_path, start_date, _, _ = req_data
+
+        # данные заявки в sc_rasp7 идентифицируются по (semcode, version):
+        # semcode - по дате начала заявки, version - из заголовка файла
+        semcode = semcode_for_date(start_date)
+        version = get_version_from_file(file_path)
+
+        del_result = db.clear_req_data(req_id, semcode, version)
 
         db.close_conn()
+
+        if isinstance(del_result, dict) and (
+            "Warning" in del_result or "WARNING" in del_result
+        ):
+            return JSONResponse(content=del_result, status_code=400)
     except DBError as db_error:
         print(f"DBException triggered: {db_error}")
         status_code = 400

@@ -123,25 +123,22 @@ def get_time_from_lesson(lesson_cell: str) -> list[TimeFromLessonCell]:
     return time_parts
 
 
-def get_current_semcode() -> int:
-    """Получает текущий семкод на основе текущей даты"""
-    today = datetime.now()
-    year = today.year
-    month = today.month
-
-    result = -1
+def semcode_for_date(day: datetime) -> int:
+    """Семкод учебного года, к которому относится дата:
+    - февраль-июнь - весенний семестр (01)
+    - иначе - осенний семестр текущего учебного года (00)
+    """
+    year = day.year
+    month = day.month
 
     if 2 <= month <= 6:
-        result = f"{str(year - 1)[-2:]}{str(year)[-2:]}01"
-    elif month >= 9 or month == 1:
-        if month == 1:
-            result = f"{str(year - 1)[-2:]}{str(year)[-2:]}00"
+        return int(f"{str(year - 1)[-2:]}{str(year)[-2:]}01")
+    return int(f"{str(year)[-2:]}{str(year + 1)[-2:]}00")
 
-        result = f"{str(year)[-2:]}{str(year + 1)[-2:]}00"
-    else:
-        result = f"{str(year)[-2:]}{str(year + 1)[-2:]}00"
 
-    return int(result)
+def get_current_semcode() -> int:
+    """Получает текущий семкод на основе текущей даты"""
+    return semcode_for_date(datetime.now())
 
 
 def make_lesson_duration(
