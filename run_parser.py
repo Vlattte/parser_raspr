@@ -47,7 +47,6 @@ from src.utils.time_utils import semcode_for_date
 
 load_dotenv()
 root_path = getenv("DOMEN_ROOT_PATH") if not None else "rasp_parse"
-
 app = FastAPI(
     title="API парсера расписания",
     root_path=root_path,
@@ -228,6 +227,8 @@ async def parse_file(
     semcode = get_current_semcode()
     db = Database()
     db.set_conn()
+    start_date = parse_date_to_needed_fmt(start_date)
+    end_date = parse_date_to_needed_fmt(end_date)
     days_filled = db.is_days_period_filled(semcode, start_date, end_date)
     db.close_conn()
 
@@ -447,11 +448,36 @@ def export_schedule(request: Request, version: str = None):
 
 
 def parse_date_str(date_str: str) -> datetime | None:
-    """Парсинг строки в дате в формате YYYY-MM-DD, None если не удалось"""
-    try:
-        return datetime.strptime(date_str, "%Y-%m-%d")
-    except (ValueError, TypeError):
-        return None
+    """Парсинг строки в дате, None если не удалось"""
+    formats = ["%Y-%m-%d", "%d-%m-%Y", "%d.%m.%Y"]
+
+    parsed_date = None
+    for fmt in formats:
+        try:
+            parsed_date = datetime.strptime(date_str, fmt)
+            str_date = parsed_date.strftime("%Y-%m-%d")
+            parsed_date = datetime.strptime(str_date, "%Y-%m-%d")
+            break
+        except ValueError:
+            continue
+
+    return parsed_date
+
+
+def parse_date_to_needed_fmt(date_str: str) -> str | None:
+    """Парсинг строки в формат %Y-%m-%d"""
+    formats = ["%Y-%m-%d", "%d-%m-%Y", "%d.%m.%Y"]
+
+    parsed_date = None
+    for fmt in formats:
+        try:
+            parsed_date = datetime.strptime(date_str, fmt)
+            parsed_date = parsed_date.strftime("%Y-%m-%d")
+            break
+        except ValueError:
+            continue
+
+    return parsed_date
 
 
 @app.post(
@@ -473,17 +499,14 @@ async def set_semester_days(start_date: str, end_date: str) -> JSONResponse:
     """Добавить даты семестра в sc_rasp18_days"""
     start_dt = parse_date_str(start_date)
     end_dt = parse_date_str(end_date)
-    if start_dt is None or end_dt is None:
-        return JSONResponse(
-            content={"ERROR": "Даты должны быть в формате YYYY-MM-DD"},
-            status_code=400,
-        )
+
     if start_dt > end_dt:
         return JSONResponse(
             content={"ERROR": "Дата начала позже даты окончания"},
             status_code=400,
         )
-
+    start_date = parse_date_to_needed_fmt(start_date)
+    end_date = parse_date_to_needed_fmt(end_date)
     semcode = get_current_semcode()
 
     db = Database()
